@@ -1,0 +1,102 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MockSocketProvider } from './mock-socket-provider.js';
+import type { RouteQuoteParams } from '@crypto-gateway/shared';
+
+const defaultParams: RouteQuoteParams = {
+  source_chain: 'ethereum',
+  source_asset: 'USDC',
+  source_amount: 1000,
+  target_chain: 'base',
+  target_asset: 'USDC',
+};
+
+describe('MockSocketProvider', () => {
+  let provider: MockSocketProvider;
+
+  beforeEach(() => {
+    provider = new MockSocketProvider();
+  });
+
+  describe('basic properties', () => {
+    it('returns correct name', () => {
+      expect(provider.getName()).toBe('socket');
+    });
+
+    it('returns supported chains', () => {
+      const chains = provider.getSupportedChains();
+      expect(chains).toContain('ethereum');
+      expect(chains).toContain('base');
+      expect(chains).toContain('polygon');
+    });
+
+    it('returns supported assets', () => {
+      const assets = provider.getSupportedAssets('ethereum');
+      expect(assets).toContain('USDC');
+      expect(assets).toContain('ETH');
+    });
+  });
+
+  describe('quote', () => {
+    it('returns a valid RouteQuote', async () => {
+      const quote = await provider.quote(defaultParams);
+
+      expect(quote.provider).toBe('socket');
+      expect(quote.source_chain).toBe('ethereum');
+      expect(quote.target_chain).toBe('base');
+      expect(quote.estimated_fee).toBeGreaterThan(0);
+      expect(quote.estimated_time).toBeGreaterThan(0);
+      expect(quote.expires_at.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('returns higher fee for cross-chain routes', async () => {
+      const crossChain = await provider.quote({
+        source_chain: 'ethereum',
+        source_asset: 'USDC',
+        source_amount: 1000,
+        target_chain: 'polygon',
+        target_asset: 'USDC',
+      });
+
+      const sameChain = await provider.quote({
+        source_chain: 'ethereum',
+        source_asset: 'USDC',
+        source_amount: 1000,
+        target_chain: 'ethereum',
+        target_asset: 'USDC',
+      });
+
+      expect(crossChain.estimated_fee).toBeGreaterThan(sameChain.estimated_fee);
+    });
+  });
+
+  describe('execute', () => {
+    it('returns a valid execution result', async () => {
+      const quote = await provider.quote(defaultParams);
+      const result = await provider.execute(quote);
+
+      expect(result.execution_id).toBeDefined();
+      expect(result.status).toBe('COMPLETED');
+      expect(result.transaction_hashes.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('getStatus', () => {
+    it('returns COMPLETED status', async () => {
+      const status = await provider.getStatus('any-id');
+      expect(status).toBe('COMPLETED');
+    });
+  });
+
+  describe('failure simulation', () => {
+    it('throws when failureRate is 1', async () => {
+      const failingProvider = new MockSocketProvider({ failureRate: 1 });
+      await expect(failingProvider.quote(defaultParams)).rejects.toThrow();
+    });
+  });
+
+  describe('circuit breaker', () => {
+    it('starts healthy', () => {
+      expect(provider.isHealthy()).toBe(true);
+    });
+  });
+});

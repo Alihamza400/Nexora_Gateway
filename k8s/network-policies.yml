@@ -1,0 +1,121 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: crypto-gateway
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-gateway
+  namespace: crypto-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app: api-gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: payment-intent
+      ports:
+        - protocol: TCP
+          port: 80
+    - to:
+        - podSelector:
+            matchLabels:
+              app: chain-abstraction
+      ports:
+        - protocol: TCP
+          port: 80
+    - to:
+        - podSelector:
+            matchLabels:
+              app: routing-engine
+      ports:
+        - protocol: TCP
+          port: 80
+    - to:
+        - podSelector:
+            matchLabels:
+              app: settlement
+      ports:
+        - protocol: TCP
+          port: 80
+    - to:
+        - podSelector:
+            matchLabels:
+              app: compliance
+      ports:
+        - protocol: TCP
+          port: 80
+    - to:
+        - podSelector:
+            matchLabels:
+              app: recovery
+      ports:
+        - protocol: TCP
+          port: 80
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internal-services
+  namespace: crypto-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: crypto-gateway
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recovery
+  namespace: crypto-gateway
+  labels:
+    app: recovery
+    app.kubernetes.io/name: recovery
+    app.kubernetes.io/part-of: crypto-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: recovery
+  template:
+    metadata:
+      labels:
+        app: recovery
+    spec:
+      containers:
+        - name: recovery
+          image: crypto-gateway/recovery:latest
+          ports:
+            - containerPort: 3006
+              name: http
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: crypto-gateway-config
+                  key: NODE_ENV
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: crypto-gateway-secrets
+                  key: DATABASE_URL
+            - name: STUCK_TRANSACTION_TIMEOUT_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: crypto-gateway-config
+                  key: STUCK_TRANSACTION_TIMEOUT_MS
+            - name: UNDERPAYMENT_TOLERANCE_PERCENT
+              valueFrom:
+                configMapKeyRef:
+                  name: crypto-gateway-config
+                  key: UNDERPAYMENT_TOLERANCE_PERCENT
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "400m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3006
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3006
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recovery-service
+  namespace: crypto-gateway
+  labels:
+    app: recovery
+spec:
+  selector:
+    app: recovery
+  ports:
+    - port: 80
+      targetPort: 3006
+      protocol: TCP
+      name: http
+  type: ClusterIP

@@ -1,0 +1,48 @@
+{
+  "name": "crypto-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-chain crypto payment gateway",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "eslint 'packages/*/src/**/*.ts'",
+    "lint:fix": "eslint 'packages/*/src/**/*.ts' --fix",
+    "format": "prettier --write 'packages/*/src/**/*.ts'",
+    "format:check": "prettier --check 'packages/*/src/**/*.ts'",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "db:migrate": "npm run migrate -w packages/db",
+    "db:seed": "npm run seed -w packages/db",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.56.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.2.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0"
+  },
+  "lint-staged": {
+    "packages/*/src/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  }
+}

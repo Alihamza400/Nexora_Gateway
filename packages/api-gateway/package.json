@@ -1,0 +1,32 @@
+{
+  "name": "@crypto-gateway/api-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@crypto-gateway/shared": "*",
+    "@crypto-gateway/db": "*",
+    "@crypto-gateway/payment-intent": "*",
+    "@crypto-gateway/routing-engine": "*",
+    "@crypto-gateway/settlement": "*",
+    "@crypto-gateway/recovery": "*",
+    "@crypto-gateway/compliance": "*",
+    "@crypto-gateway/chain-abstraction": "*",
+    "fastify": "^4.26.0",
+    "@fastify/cors": "^9.0.0",
+    "@fastify/helmet": "^11.0.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

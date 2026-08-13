@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: crypto-gateway
+  labels:
+    app: api-gateway
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/part-of: crypto-gateway
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: api-gateway
+          image: crypto-gateway/api-gateway:latest
+          ports:
+            - containerPort: 3000
+              name: http
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: crypto-gateway-config
+                  key: NODE_ENV
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: crypto-gateway-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: crypto-gateway-secrets
+                  key: REDIS_URL
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway-service
+  namespace: crypto-gateway
+  labels:
+    app: api-gateway
+spec:
+  selector:
+    app: api-gateway
+  ports:
+    - port: 80
+      targetPort: 3000
+      protocol: TCP
+      name: http
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: crypto-gateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120

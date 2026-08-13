@@ -1,0 +1,28 @@
+FROM base AS build
+
+# Copy api-gateway package
+COPY packages/api-gateway/package.json ./packages/api-gateway/
+RUN npm install --only=production --ignore-scripts
+
+COPY packages/api-gateway/dist ./packages/api-gateway/dist
+COPY packages/api-gateway/package.json ./packages/api-gateway/
+
+# Final stage
+FROM base AS production
+
+# Copy dependencies from build stage
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages/api-gateway ./packages/api-gateway
+
+# Set working directory
+WORKDIR /app/packages/api-gateway
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Start the service
+CMD ["node", "dist/index.js"]

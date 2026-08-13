@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: crypto-gateway
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: crypto-gateway
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:14-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_DB
+              value: "crypto_gateway"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: crypto-gateway-secrets
+                  key: DATABASE_URL
+                  # Extract username from URL
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: crypto-gateway-secrets
+                  key: DATABASE_URL
+                  # Extract password from URL
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+                - -d
+                - crypto_gateway
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - postgres
+                - -d
+                - crypto_gateway
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: crypto-gateway
+  labels:
+    app: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  type: ClusterIP

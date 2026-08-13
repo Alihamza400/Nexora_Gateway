@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crypto-gateway-config
+  namespace: crypto-gateway
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  PORT: "3000"
+  
+  # Rate Lock Configuration
+  RATE_LOCK_DEFAULT_TTL: "300"
+  RATE_LOCK_MIN_SPREAD_BPS: "50"
+  RATE_LOCK_MAX_SPREAD_BPS: "200"
+  
+  # Recovery Configuration
+  STUCK_TRANSACTION_TIMEOUT_MS: "1800000"
+  UNDERPAYMENT_TOLERANCE_PERCENT: "1"
+  MAX_AUTO_REFUND_USD: "10000"
+  
+  # Compliance Configuration
+  AUTO_BLOCK_THRESHOLD: "90"
+  REVIEW_THRESHOLD: "70"
+  VELOCITY_MAX_TRANSACTIONS: "20"
+  VELOCITY_MAX_AMOUNT: "100000"
+  
+  # Routing Configuration
+  QUOTE_TIMEOUT_MS: "5000"
+  MIN_QUOTES_REQUIRED: "1"
