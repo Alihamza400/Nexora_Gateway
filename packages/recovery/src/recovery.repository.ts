@@ -72,7 +72,7 @@ export class RecoveryRepository {
       ],
     );
 
-    return this.mapRow(result.rows[0]);
+    return this.mapRow(result.rows[0]!);
   }
 
   /**

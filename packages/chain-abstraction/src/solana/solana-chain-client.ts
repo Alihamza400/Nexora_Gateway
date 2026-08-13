@@ -221,7 +221,7 @@ export class SolanaChainClient implements IChainClient {
    * Get SPL token balance.
    * Uses the Token Accounts by Owner method.
    */
-  async getTokenBalance(address: string, mintAddress: string): Promise<Balance> {
+  async getTokenBalance(_address: string, mintAddress: string): Promise<Balance> {
     // In production, this would:
     // 1. Get token accounts by owner for the mint
     // 2. Parse the account data

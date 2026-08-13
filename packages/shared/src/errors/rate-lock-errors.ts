@@ -2,7 +2,7 @@
  * Rate Lock & Risk Scoring error classes.
  */
 
-import { GatewayError } from './index.js';
+import { GatewayError } from './gateway-error.js';
 
 // ─── Price Oracle Errors ─────────────────────────────────────────────────────
 

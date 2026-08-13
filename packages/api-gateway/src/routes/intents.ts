@@ -1,20 +1,26 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PaymentIntentService, NewPaymentIntent } from '@crypto-gateway/payment-intent';
 import { ValidationError, IntentNotFoundError } from '@crypto-gateway/shared';
+import { AuthenticatedRequest } from '../middleware/auth.js';
 
 /**
  * Payment Intent API Routes
  *
- * POST /api/v1/intents          - Create a new payment intent
- * GET  /api/v1/intents/:id      - Get intent by ID
- * GET  /api/v1/intents           - List intents for merchant
- * POST /api/v1/intents/:id/quote - Generate a quote
+ * POST /api/v1/intents          - Create a new payment intent (requires auth)
+ * GET  /api/v1/intents/:id      - Get intent by ID (requires auth)
+ * GET  /api/v1/intents           - List intents for merchant (requires auth)
+ * POST /api/v1/intents/:id/quote - Generate a quote (requires auth)
  */
 
-export async function intentRoutes(
+export function intentRoutes(
   app: FastifyInstance,
   intentService: PaymentIntentService,
-): Promise<void> {
+  authMiddleware?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>,
+): void {
+  // Apply auth middleware to all routes if provided
+  if (authMiddleware) {
+    app.addHook('preHandler', authMiddleware);
+  }
   /**
    * Create a new payment intent.
    *
@@ -30,6 +36,12 @@ export async function intentRoutes(
    */
   app.post('/api/v1/intents', async (request: FastifyRequest, reply: FastifyReply) => {
     const body = request.body as NewPaymentIntent;
+    const merchant = (request as AuthenticatedRequest).merchant;
+
+    // Use authenticated merchant's ID if not provided
+    if (!body.merchant_id && merchant) {
+      body.merchant_id = merchant.id;
+    }
 
     // Validate required fields
     if (!body.merchant_id || !body.order_ref || !body.target_amount || !body.target_asset || !body.target_chain) {
@@ -122,8 +134,12 @@ export async function intentRoutes(
       limit?: string;
       offset?: string;
     };
+    const merchant = (request as AuthenticatedRequest).merchant;
 
-    if (!merchant_id) {
+    // Use authenticated merchant's ID if not provided
+    const effectiveMerchantId = merchant_id || merchant?.id;
+
+    if (!effectiveMerchantId) {
       return reply.status(400).send({
         error: {
           code: 'VALIDATION_ERROR',
@@ -132,7 +148,7 @@ export async function intentRoutes(
       });
     }
 
-    const intents = await intentService.getMerchantIntents(merchant_id, {
+    const intents = await intentService.getMerchantIntents(effectiveMerchantId, {
       limit: limit ? parseInt(limit, 10) : 20,
       offset: offset ? parseInt(offset, 10) : 0,
     });

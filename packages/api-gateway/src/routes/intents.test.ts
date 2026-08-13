@@ -1,26 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Fastify, { FastifyInstance } from 'fastify';
 import { intentRoutes } from './intents.js';
-import type { PaymentIntent, IntentEvent, MerchantConfig } from '@crypto-gateway/shared';
-
-// ─── Mock Services ──────────────────────────────────────────────────────
-
-const mockMerchant: MerchantConfig = {
-  id: 'merchant-001',
-  name: 'Test Shop',
-  settlement_asset: 'USDC',
-  settlement_chain: '1',
-  settlement_address: '0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18',
-  accepted_chains: ['1', '8453'],
-  accepted_assets: ['USDC', 'USDT', 'ETH'],
-  fee_percentage: 1.0,
-  kyc_threshold: 10000,
-  quote_ttl_seconds: 300,
-  webhook_url: 'https://webhook.example.com/test',
-  compliance_status: 'COMPLIANT',
-  created_at: new Date(),
-  updated_at: new Date(),
-};
+import type { PaymentIntent, IntentEvent } from '@crypto-gateway/shared';
 
 const mockIntent: PaymentIntent = {
   id: '550e8400-e29b-41d4-a716-446655440000',

@@ -360,7 +360,7 @@ export class GasAbstractionService implements IGasAbstraction {
           percentage: 0,
           usdAmount: 0,
           tokenAmount: 0,
-          tokenSymbol: request.gasToken ?? config.nativeSymbol,
+          tokenSymbol: config.nativeSymbol,
         },
       },
     };
@@ -369,13 +369,13 @@ export class GasAbstractionService implements IGasAbstraction {
   // ─── Relayer Methods ────────────────────────────────────────────────
 
   private async prepareRelayerRequest(
-    params: {
+    _params: {
       chainId: string;
       transaction: RelayerTransaction;
       senderAddress: string;
       gasToken?: string;
     },
-    config: ChainGasConfig,
+    _config: ChainGasConfig,
   ): Promise<RelayerRequest> {
     // In production, this would:
     // 1. Connect to relayer service
@@ -383,8 +383,8 @@ export class GasAbstractionService implements IGasAbstraction {
     // 3. Return relayer request
 
     return {
-      transaction: params.transaction,
-      senderAddress: params.senderAddress,
+      transaction: _params.transaction,
+      senderAddress: _params.senderAddress,
       maxFeeWei: '100000000000000000', // 0.1 ETH max fee
     };
   }
@@ -418,7 +418,7 @@ export class GasAbstractionService implements IGasAbstraction {
           percentage: config.relayerConfig?.feePercentage ?? 1,
           usdAmount: feeEth * config.nativePriceUsd,
           tokenAmount: feeEth,
-          tokenSymbol: request.gasToken ?? config.nativeSymbol,
+          tokenSymbol: config.nativeSymbol,
         },
       },
     };

@@ -7,6 +7,7 @@ export { PaymentIntentService } from './payment-intent.service.js';
 export { PaymentIntentRepository } from './payment-intent.repository.js';
 export { MerchantConfigService } from './merchant-config.service.js';
 export { WebhookDeliveryService } from './webhook-delivery.service.js';
+export { AuthService } from './auth.service.js';
 
 // Re-export types
 export type {
@@ -18,3 +19,4 @@ export type {
   Quote,
   WebhookPayload,
 } from '@crypto-gateway/shared';
+export type { RegisterRequest, LoginRequest, AuthResponse } from './auth.service.js';

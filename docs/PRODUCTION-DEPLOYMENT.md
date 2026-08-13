@@ -162,7 +162,7 @@ spec:
 
 ### Grafana Dashboards
 
-Access Grafana at `http://<LOAD_BALANCER_IP>:3000`:
+Access Grafana at `http://<LOAD_BALANCER_IP>:3001`:
 
 - **Username**: admin
 - **Password**: (from grafana-secrets)

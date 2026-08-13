@@ -378,6 +378,8 @@ export class ReconciliationService implements IReconciliationService {
     );
 
     return record;
+
+    return record;
   }
 
   private async updateRecord(

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { RouteScorer, DEFAULT_PREFERENCES } from './route-scorer.js';
 import type { RouteQuote } from '@crypto-gateway/shared';
 
@@ -131,15 +131,15 @@ describe('RouteScorer', () => {
 
       const ranked = scorer.rank([expensive, cheap]);
 
-      expect(ranked[0].quote.id).toBe('cheap');
-      expect(ranked[1].quote.id).toBe('expensive');
+      expect(ranked[0]!.quote.id).toBe('cheap');
+      expect(ranked[1]!.quote.id).toBe('expensive');
     });
 
     it('ranks a single quote', () => {
       const quote = makeQuote({ id: 'solo' });
       const ranked = scorer.rank([quote]);
       expect(ranked).toHaveLength(1);
-      expect(ranked[0].quote.id).toBe('solo');
+      expect(ranked[0]!.quote.id).toBe('solo');
     });
   });
 

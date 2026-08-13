@@ -389,7 +389,7 @@ describe('SettlementService', () => {
 
       const result = await settlementService.getPendingSettlements();
       expect(result.length).toBe(1);
-      expect(result[0].status).toBe('PENDING');
+      expect(result[0]!.status).toBe('PENDING');
     });
   });
 });

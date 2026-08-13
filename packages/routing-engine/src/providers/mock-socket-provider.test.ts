@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { MockSocketProvider } from './mock-socket-provider.js';
 import type { RouteQuoteParams } from '@crypto-gateway/shared';
 
@@ -8,6 +8,7 @@ const defaultParams: RouteQuoteParams = {
   source_amount: 1000,
   target_chain: 'base',
   target_asset: 'USDC',
+  target_amount: 1000,
 };
 
 describe('MockSocketProvider', () => {
@@ -55,6 +56,7 @@ describe('MockSocketProvider', () => {
         source_amount: 1000,
         target_chain: 'polygon',
         target_asset: 'USDC',
+        target_amount: 1000,
       });
 
       const sameChain = await provider.quote({
@@ -63,6 +65,7 @@ describe('MockSocketProvider', () => {
         source_amount: 1000,
         target_chain: 'ethereum',
         target_asset: 'USDC',
+        target_amount: 1000,
       });
 
       expect(crossChain.estimated_fee).toBeGreaterThan(sameChain.estimated_fee);

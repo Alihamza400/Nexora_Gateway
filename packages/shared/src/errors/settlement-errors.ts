@@ -2,7 +2,7 @@
  * Settlement-specific error classes.
  */
 
-import { GatewayError } from './index.js';
+import { GatewayError } from './gateway-error.js';
 
 export class SettlementNotFoundError extends GatewayError {
   constructor(settlementId: string) {

@@ -2,7 +2,7 @@
  * Routing-specific error classes.
  */
 
-import { GatewayError } from './index.js';
+import { GatewayError } from './gateway-error.js';
 
 export class RouteNotFoundError extends GatewayError {
   constructor(sourceChain: string, targetChain: string) {

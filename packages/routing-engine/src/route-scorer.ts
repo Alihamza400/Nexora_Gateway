@@ -70,7 +70,7 @@ export class RouteScorer {
     if (quotes.length === 0) return null;
 
     const ranked = this.rank(quotes);
-    return ranked[0];
+    return ranked[0] ?? null;
   }
 
   /**

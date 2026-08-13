@@ -80,7 +80,7 @@ export class VelocityChecker {
 
     // Calculate time since last transaction
     const sortedByTime = [...validRecords].sort((a, b) => b.timestamp - a.timestamp);
-    const timeSinceLastTransaction = sortedByTime.length > 1
+    const timeSinceLastTransaction = sortedByTime.length > 1 && sortedByTime[0] && sortedByTime[1]
       ? sortedByTime[0].timestamp - sortedByTime[1].timestamp
       : Infinity;
 
@@ -186,7 +186,7 @@ export class VelocityChecker {
    */
   private determineFlags(
     transactionCount: number,
-    totalAmount: number,
+    _totalAmount: number,
     averageAmount: number,
     timeSinceLastTx: number,
   ): RiskFlag[] {

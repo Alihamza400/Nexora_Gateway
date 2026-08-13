@@ -165,7 +165,8 @@ export class SettlementService {
     };
 
     // Estimate gas (used for gas cost in rate lock quotes)
-    await chainClient.estimateGas(tx);
+    const gasEstimate = await chainClient.estimateGas(tx);
+    void gasEstimate; // Used for gas cost in rate lock quotes
 
     // Sign and submit (hot wallet signing)
     const signedTx = await this.signTransaction(tx, settlement.chain);
@@ -240,7 +241,7 @@ export class SettlementService {
       if (retryCount < SettlementService.MAX_RETRIES) {
         const delay = SettlementService.BASE_RETRY_DELAY * Math.pow(2, retryCount);
         setTimeout(() => {
-          this.retrySettlement(settlementId).catch(() => {
+          void this.retrySettlement(settlementId).catch(() => {
             // Retry failed, will be picked up by retry worker
           });
         }, delay);

@@ -22,7 +22,7 @@ import type {
   MerchantPreferences,
 } from '@crypto-gateway/shared';
 import { NoValidQuotesError, ProviderUnavailableError } from '@crypto-gateway/shared';
-import { RouteScorer, DEFAULT_PREFERENCES } from './route-scorer.js';
+import { RouteScorer } from './route-scorer.js';
 import { ProviderRegistry } from './provider-registry.js';
 import { isCircuitOpenError } from './base-route-provider.js';
 

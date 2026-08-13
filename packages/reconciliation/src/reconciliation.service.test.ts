@@ -154,7 +154,7 @@ describe('ReconciliationService', () => {
       const endDate = new Date('2025-01-02');
 
       // Override the check to return discrepancies
-      mockDb.query.mockImplementation(async (sql: string) => {
+      mockDb.query.mockImplementation(async (sql: string, _params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => {
         if (sql.includes('LEFT JOIN settlements') && sql.includes('payment_intents')) {
           return { rows: [{ intent_id: 'intent-1' }] };
         }
@@ -182,7 +182,7 @@ describe('ReconciliationService', () => {
             entry.status = 'DISCREPANCY_FOUND';
             entry.total_discrepancies = 1;
           }
-          return { rows: [entry] };
+          return { rows: entry ? [entry] : [] };
         }
         if (sql.includes('FROM reconciliation_records') && sql.includes('WHERE id')) {
           const entry = mockDb.store.find((e) => e.id === 'recon-1');

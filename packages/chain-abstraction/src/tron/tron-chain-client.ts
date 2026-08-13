@@ -99,7 +99,7 @@ export class TronChainClient implements IChainClient {
     // Base58 validation: alphanumeric excluding 0, O, I, l
     const base58Chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     for (let i = 1; i < address.length; i++) {
-      if (!base58Chars.includes(address[i])) return false;
+      if (!base58Chars.includes(address[i]!)) return false;
     }
 
     return true;
@@ -223,7 +223,7 @@ export class TronChainClient implements IChainClient {
    * Get TRC20 token balance.
    * Uses the `balanceOf` method on the TRC20 contract.
    */
-  async getTokenBalance(address: string, tokenAddress: string): Promise<Balance> {
+  async getTokenBalance(_address: string, tokenAddress: string): Promise<Balance> {
     // In production, this would:
     // 1. Get the TRC20 contract instance
     // 2. Call balanceOf(address)
@@ -296,7 +296,7 @@ export class TronChainClient implements IChainClient {
    * Calculate the energy cost for a TRC20 transfer.
    * Typical TRC20 transfer costs ~65,000 energy.
    */
-  calculateTrc20TransferCost(amount: number): {
+  calculateTrc20TransferCost(_amount: number): {
     energyRequired: number;
     costTrx: number;
     costUsd: number;

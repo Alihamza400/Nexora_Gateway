@@ -368,7 +368,7 @@ describe('ComplianceOrchestrator', () => {
 
     const log = orchestrator.getAuditLog();
     expect(log.length).toBe(1);
-    expect(log[0].intentId).toBe('intent-5');
+    expect(log[0]!.intentId).toBe('intent-5');
   });
 
   it('filters audit log', async () => {
@@ -377,7 +377,7 @@ describe('ComplianceOrchestrator', () => {
 
     const log = orchestrator.getAuditLog({ intentId: 'intent-6' });
     expect(log.length).toBe(1);
-    expect(log[0].intentId).toBe('intent-6');
+    expect(log[0]!.intentId).toBe('intent-6');
   });
 
   it('gets statistics', async () => {

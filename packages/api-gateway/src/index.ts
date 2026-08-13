@@ -6,8 +6,11 @@ import {
   PaymentIntentRepository,
   MerchantConfigService,
   WebhookDeliveryService,
+  AuthService,
 } from '@crypto-gateway/payment-intent';
 import { intentRoutes } from './routes/intents.js';
+import { authRoutes } from './routes/auth.js';
+import { createAuthMiddleware } from './middleware/auth.js';
 
 const app = Fastify({
   logger: {
@@ -34,6 +37,7 @@ const merchantService = new MerchantConfigService();
 const webhookService = new WebhookDeliveryService(merchantService);
 const intentRepository = new PaymentIntentRepository();
 const intentService = new PaymentIntentService(intentRepository, merchantService, webhookService);
+const authService = new AuthService();
 
 // ─── Health Check ────────────────────────────────────────────────────────────
 
@@ -60,21 +64,29 @@ app.get('/health/ready', async () => {
   }
 });
 
+// ─── Auth Middleware ────────────────────────────────────────────────────────
+const authMiddleware = createAuthMiddleware(authService);
+
 // ─── API Routes ──────────────────────────────────────────────────────────────
 
 await app.register(async (instance) => {
-  await intentRoutes(instance, intentService);
+  await intentRoutes(instance, intentService, authMiddleware);
+});
+
+await app.register(async (instance) => {
+  await authRoutes(instance, authService);
 });
 
 // ─── Error Handler ───────────────────────────────────────────────────────────
 
-app.setErrorHandler((error, request, reply) => {
+app.setErrorHandler((error, _request, reply) => {
   app.log.error(error);
 
-  const statusCode = (error as any).statusCode || 500;
-  const code = (error as any).code || 'INTERNAL_ERROR';
+  const httpError = error as { statusCode?: number; code?: string };
+  const statusCode = httpError.statusCode || 500;
+  const code = httpError.code || 'INTERNAL_ERROR';
 
-  reply.status(statusCode).send({
+  void reply.status(statusCode).send({
     error: {
       code,
       message: error.message || 'An unexpected error occurred',

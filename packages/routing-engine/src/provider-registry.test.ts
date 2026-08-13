@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProviderRegistry } from './provider-registry.js';
-import type { IRouteProvider, RouteQuote, RouteQuoteParams, RouteExecutionResult } from '@crypto-gateway/shared';
+import type { IRouteProvider, RouteQuote, RouteExecutionResult } from '@crypto-gateway/shared';
 
 // ─── Mock Provider ──────────────────────────────────────────────────────
 
@@ -136,7 +136,7 @@ describe('ProviderRegistry', () => {
 
       const supported = registry.getSupportedProviders('ethereum', 'base');
       expect(supported).toHaveLength(1);
-      expect(supported[0].getName()).toBe('lifi');
+      expect(supported[0]!.getName()).toBe('lifi');
     });
 
     it('returns empty array if no provider supports both chains', () => {

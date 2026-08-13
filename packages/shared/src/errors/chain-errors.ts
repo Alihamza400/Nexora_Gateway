@@ -3,7 +3,7 @@
  * Granular errors for chain client operations.
  */
 
-import { GatewayError } from './index.js';
+import { GatewayError } from './gateway-error.js';
 
 // ─── Address Errors ─────────────────────────────────────────────────────────
 

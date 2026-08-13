@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RouteEngine } from './route-engine.js';
 import { ProviderRegistry } from './provider-registry.js';
 import { CircuitBreaker } from './circuit-breaker.js';
@@ -61,6 +61,7 @@ const defaultParams: RouteQuoteParams = {
   source_amount: 1000,
   target_chain: 'base',
   target_asset: 'USDC',
+  target_amount: 1000,
 };
 
 // ─── Tests ───────────────────────────────────────────────────────────────
@@ -220,8 +221,8 @@ describe('RouteEngine', () => {
       const routes = await engine.getAllRoutes(defaultParams);
       expect(routes).toHaveLength(2);
       // Should be sorted by score (socket first due to lower fee)
-      expect(routes[0].quote.provider).toBe('socket');
-      expect(routes[1].quote.provider).toBe('lifi');
+      expect(routes[0]!.quote.provider).toBe('socket');
+      expect(routes[1]!.quote.provider).toBe('lifi');
     });
 
     it('returns empty array if no providers', async () => {

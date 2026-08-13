@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RecoveryService, type RecoveryServiceConfig } from './recovery.service.js';
 import type {
-  RecoveryCase,
-  RecoveryCaseType,
-  RecoveryStatus,
   IChainClient,
 } from '@crypto-gateway/shared';
 
@@ -220,7 +217,7 @@ describe('RecoveryService', () => {
       });
 
       expect(mockDb.store.length).toBe(1);
-      expect(mockDb.store[0].case_type).toBe('MISDIRECTED');
+      expect(mockDb.store[0]!.case_type).toBe('MISDIRECTED');
     });
   });
 
@@ -611,7 +608,7 @@ describe('RecoveryService', () => {
 
       const cases = await service.getCasesForIntent('intent-1');
       expect(cases.length).toBe(1);
-      expect(cases[0].related_intent_id).toBe('intent-1');
+      expect(cases[0]!.related_intent_id).toBe('intent-1');
     });
   });
 

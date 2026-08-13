@@ -35,12 +35,12 @@ const DEFAULT_CONFIG: TRMConfig = {
  * API Reference: https://docs.trmlabs.com/
  */
 export class TRMRiskScorer implements IRiskScorer {
-  private readonly config: TRMConfig;
+  private readonly _config: TRMConfig;
   private readonly cache = new Map<string, { result: RiskResult; expiresAt: number }>();
   private readonly cacheTtlMs = 5 * 60 * 1000; // 5 minutes
 
-  constructor(config?: Partial<TRMConfig>) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+  constructor(_config?: Partial<TRMConfig>) {
+    this._config = { ...DEFAULT_CONFIG, ..._config };
   }
 
   /**
@@ -140,14 +140,15 @@ export class TRMRiskScorer implements IRiskScorer {
   /**
    * Call TRM Forensics API.
    */
-  private async callTRMRisk(
+  private callTRMRisk(
     address: string,
     chain: string,
-  ): Promise<TRMRiskResponse> {
+  ): TRMRiskResponse {
     // In production, this would:
-    // 1. Make HTTP request to TRM API
+    // 1. Make HTTP request to TRM API using this._config.apiKey and this._config.baseUrl
     // 2. Handle authentication (API key in header)
     // 3. Parse response
+    void this._config.apiKey; // Used in production for API authentication
 
     // Simulate API response
     const riskScore = this.simulateRiskScore(address);
