@@ -201,7 +201,7 @@ export class WebhookDeliveryService {
   ): Promise<void> {
     await query(
       `UPDATE webhook_deliveries
-       SET status = $1, attempt_count = $2, last_attempt_at = NOW(),
+       SET status = $1::VARCHAR, attempt_count = $2, last_attempt_at = NOW(),
            next_retry_at = $3, last_error = $4,
            completed_at = CASE WHEN $1 IN ('DELIVERED', 'FAILED') THEN NOW() ELSE completed_at END
        WHERE id = $5`,

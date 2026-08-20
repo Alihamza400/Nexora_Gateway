@@ -13,6 +13,7 @@ CREATE TABLE webhook_deliveries (
   last_error TEXT,
   next_retry_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
   UNIQUE(intent_id, event_type)
 );

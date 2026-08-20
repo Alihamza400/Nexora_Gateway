@@ -25,8 +25,13 @@ const app = Fastify({
 // ─── Plugins ─────────────────────────────────────────────────────────────────
 
 await app.register(cors, {
-  origin: process.env['CORS_ORIGINS']?.split(',') || ['http://localhost:3000'],
+  origin: process.env['CORS_ORIGINS']?.split(',') || [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
 });
 
 await app.register(helmet);

@@ -204,8 +204,8 @@ export class AuthService {
     const apiKeyHash = this.hashApiKey(apiKey);
 
     const result = await query<Merchant>(
-      'SELECT * FROM merchants WHERE api_key_hash = $1 AND compliance_status = $2',
-      [apiKeyHash, 'COMPLIANT'],
+      'SELECT * FROM merchants WHERE api_key_hash = $1',
+      [apiKeyHash],
     );
 
     return result.rows[0] || null;
