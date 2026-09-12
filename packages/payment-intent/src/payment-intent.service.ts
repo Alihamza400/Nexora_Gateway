@@ -6,7 +6,12 @@ import {
   VALID_TRANSITIONS,
   IntentEvent,
 } from '@crypto-gateway/shared';
-import { isValidTransition, ValidationError, IntentNotFoundError, QuoteExpiredError } from '@crypto-gateway/shared';
+import {
+  isValidTransition,
+  ValidationError,
+  IntentNotFoundError,
+  QuoteExpiredError,
+} from '@crypto-gateway/shared';
 import { PaymentIntentRepository } from './payment-intent.repository.js';
 import { MerchantConfigService } from './merchant-config.service.js';
 import { WebhookDeliveryService } from './webhook-delivery.service.js';
@@ -57,11 +62,15 @@ export class PaymentIntentService {
 
     // Validate amount is within bounds
     if (data.target_amount <= 0) {
-      throw new ValidationError('Target amount must be positive', { target_amount: data.target_amount });
+      throw new ValidationError('Target amount must be positive', {
+        target_amount: data.target_amount,
+      });
     }
 
     if (data.target_amount > 1_000_000) {
-      throw new ValidationError('Target amount exceeds maximum', { target_amount: data.target_amount });
+      throw new ValidationError('Target amount exceeds maximum', {
+        target_amount: data.target_amount,
+      });
     }
 
     // Create intent
@@ -105,8 +114,14 @@ export class PaymentIntentService {
     const ttlSeconds = merchant?.quote_ttl_seconds || 300;
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
 
-    // Update intent with quote data
-    await this.repository.updateQuote(intentId, rate, expiresAt);
+    // Update intent with quote data. The deposit details are persisted on the
+    // intent, not just emitted into the event payload, so the deposit watcher can
+    // resolve an incoming transfer to this intent by index lookup.
+    await this.repository.updateQuote(intentId, rate, expiresAt, {
+      address: depositAddress,
+      asset: depositAsset,
+      chain: depositChain,
+    });
 
     // Transition to QUOTED state
     const transitionedIntent = await this.repository.transition(intentId, 'QUOTE_GENERATED', {
@@ -146,15 +161,67 @@ export class PaymentIntentService {
       throw new ValidationError(`Cannot await payment in state: ${intent.state}`);
     }
 
-    const updated = await this.repository.transition(intentId, 'QUOTE_GENERATED', {
-      action: 'await_payment',
+    const updated = await this.repository.transition(intentId, 'PAYMENT_AWAITED', {
+      deposit_address: intent.deposit_address,
+      deposit_asset: intent.deposit_asset,
+      deposit_chain: intent.deposit_chain,
+      quote_expires_at: intent.quote_expires_at?.toISOString() ?? null,
+      awaited_at: new Date().toISOString(),
     });
 
-    // Actually we want to transition from QUOTED to AWAITING_PAYMENT
-    // The event type mapping needs to be correct
-    // Let me fix this by using a direct state update approach
-
     return updated;
+  }
+
+  /**
+   * Record an observed on-chain deposit against an intent.
+   *
+   * This is the entry point for the deposit watcher. It encapsulates the state
+   * rules so the watcher does not have to know them:
+   *
+   *   QUOTED          → AWAITING_PAYMENT → DETECTED
+   *   AWAITING_PAYMENT→ DETECTED
+   *   UNDERPAID       → DETECTED (a top-up that completes the payment)
+   *
+   * Safe to call more than once for the same transfer. A reclaimed job can run
+   * twice, so a duplicate must be a no-op rather than a second transition.
+   */
+  async recordDeposit(
+    intentId: string,
+    txHash: string,
+    amount: number,
+    sourceChain: string,
+    sourceAsset: string,
+  ): Promise<PaymentIntent> {
+    const intent = await this.repository.findById(intentId);
+    if (!intent) {
+      throw new IntentNotFoundError(intentId);
+    }
+
+    // Already processed, or in a state that does not accept a deposit. Returning
+    // the current intent makes a duplicate delivery a no-op.
+    const acceptsDeposit: IntentState[] = ['QUOTED', 'AWAITING_PAYMENT', 'UNDERPAID'];
+    if (!acceptsDeposit.includes(intent.state)) {
+      return intent;
+    }
+
+    // A customer can pay before the client polls for quote acceptance, so the
+    // transition through AWAITING_PAYMENT may still be outstanding.
+    if (intent.state === 'QUOTED') {
+      await this.awaitPayment(intentId);
+    }
+
+    try {
+      return await this.detectDeposit(intentId, txHash, amount, sourceChain, sourceAsset);
+    } catch (error) {
+      // A payment that arrives after the quote expired is a recovery case, not a
+      // failed job. detectDeposit has already transitioned the intent to EXPIRED
+      // and emitted QUOTE_EXPIRED, so retrying would only loop.
+      if (error instanceof QuoteExpiredError) {
+        const expired = await this.repository.findById(intentId);
+        if (expired) return expired;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -372,7 +439,9 @@ export class PaymentIntentService {
   /**
    * Get intent with full event history.
    */
-  async getIntentWithEvents(id: string): Promise<{ intent: PaymentIntent; events: IntentEvent[] } | null> {
+  async getIntentWithEvents(
+    id: string,
+  ): Promise<{ intent: PaymentIntent; events: IntentEvent[] } | null> {
     const intent = await this.repository.findById(id);
     if (!intent) return null;
 

@@ -3,7 +3,7 @@ import { PaymentIntentService } from './payment-intent.service.js';
 import { PaymentIntentRepository } from './payment-intent.repository.js';
 import { MerchantConfigService } from './merchant-config.service.js';
 import { WebhookDeliveryService } from './webhook-delivery.service.js';
-import { PaymentIntent, MerchantConfig } from '@crypto-gateway/shared';
+import { PaymentIntent, MerchantConfig, QuoteExpiredError } from '@crypto-gateway/shared';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -34,6 +34,9 @@ const mockIntent: PaymentIntent = {
   accepted_assets: ['USDC', 'USDT'],
   quoted_rate: null,
   quote_expires_at: null,
+  deposit_address: null,
+  deposit_asset: null,
+  deposit_chain: null,
   state: 'CREATED',
   version: 1,
   created_at: new Date(),
@@ -44,9 +47,9 @@ const mockIntent: PaymentIntent = {
 
 describe('PaymentIntentService', () => {
   let service: PaymentIntentService;
-  let mockRepo: any;
-  let mockMerchantService: any;
-  let mockWebhookService: any;
+  let mockRepo: Record<string, ReturnType<typeof vi.fn>>;
+  let mockMerchantService: Record<string, ReturnType<typeof vi.fn>>;
+  let mockWebhookService: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(() => {
     mockRepo = {
@@ -60,7 +63,7 @@ describe('PaymentIntentService', () => {
       findExpiredIntents: vi.fn().mockResolvedValue([]),
       getEvents: vi.fn().mockResolvedValue([]),
       getCountByState: vi.fn().mockResolvedValue({ CREATED: 1 }),
-      updateQuote: vi.fn().mockImplementation((_id, rate, expiresAt) => {
+      updateQuote: vi.fn().mockImplementation((_id: string, rate: number, expiresAt: Date) => {
         return Promise.resolve({
           ...mockIntent,
           quoted_rate: rate,
@@ -219,13 +222,7 @@ describe('PaymentIntentService', () => {
       const quotedIntent = { ...mockIntent, state: 'AWAITING_PAYMENT' };
       mockRepo.findById.mockResolvedValue(quotedIntent);
 
-      const result = await service.detectDeposit(
-        mockIntent.id,
-        '0xtxhash',
-        100,
-        '1',
-        'USDC',
-      );
+      const result = await service.detectDeposit(mockIntent.id, '0xtxhash', 100, '1', 'USDC');
 
       expect(result).toBeDefined();
       expect(mockRepo.transition).toHaveBeenCalledWith(
@@ -363,6 +360,104 @@ describe('PaymentIntentService', () => {
       mockRepo.findById.mockResolvedValue(null);
       const result = await service.getIntentWithEvents('nonexistent');
       expect(result).toBeNull();
+    });
+  });
+
+  // ─── Deposit lifecycle ─────────────────────────────────────────────────────
+  //
+  // Regression coverage for a defect that made the deposit path unreachable:
+  // no EventType mapped to AWAITING_PAYMENT, so awaitPayment() attempted
+  // QUOTED → QUOTED and threw, which in turn made DEPOSIT_DETECTED unreachable
+  // because the state machine only permits AWAITING_PAYMENT → DETECTED.
+
+  describe('awaitPayment', () => {
+    it('emits PAYMENT_AWAITED so the intent reaches AWAITING_PAYMENT', async () => {
+      mockRepo.findById.mockResolvedValue({ ...mockIntent, state: 'QUOTED' });
+      mockRepo.transition.mockResolvedValue({
+        ...mockIntent,
+        state: 'AWAITING_PAYMENT',
+        version: 2,
+      });
+
+      const result = await service.awaitPayment(mockIntent.id);
+
+      expect(mockRepo.transition).toHaveBeenCalledWith(
+        mockIntent.id,
+        'PAYMENT_AWAITED',
+        expect.any(Object),
+      );
+      expect(result.state).toBe('AWAITING_PAYMENT');
+    });
+
+    it('refuses to await payment from a terminal state', async () => {
+      mockRepo.findById.mockResolvedValue({ ...mockIntent, state: 'SETTLED' });
+
+      await expect(service.awaitPayment(mockIntent.id)).rejects.toThrow(
+        /Cannot await payment in state: SETTLED/,
+      );
+      expect(mockRepo.transition).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordDeposit', () => {
+    it('moves a QUOTED intent through AWAITING_PAYMENT to DETECTED', async () => {
+      mockRepo.findById.mockResolvedValue({ ...mockIntent, state: 'QUOTED' });
+      mockRepo.transition
+        .mockResolvedValueOnce({ ...mockIntent, state: 'AWAITING_PAYMENT', version: 2 })
+        .mockResolvedValueOnce({ ...mockIntent, state: 'DETECTED', version: 3 });
+
+      const result = await service.recordDeposit(mockIntent.id, '0xabc', 100, '1', 'USDC');
+
+      expect(mockRepo.transition).toHaveBeenNthCalledWith(
+        1,
+        mockIntent.id,
+        'PAYMENT_AWAITED',
+        expect.any(Object),
+      );
+      expect(mockRepo.transition).toHaveBeenNthCalledWith(
+        2,
+        mockIntent.id,
+        'DEPOSIT_DETECTED',
+        expect.any(Object),
+      );
+      expect(result.state).toBe('DETECTED');
+    });
+
+    it('is a no-op for a duplicate delivery of an already-detected intent', async () => {
+      mockRepo.findById.mockResolvedValue({ ...mockIntent, state: 'DETECTED' });
+
+      const result = await service.recordDeposit(mockIntent.id, '0xabc', 100, '1', 'USDC');
+
+      // A reclaimed job can run twice; the second run must not transition again.
+      expect(mockRepo.transition).not.toHaveBeenCalled();
+      expect(result.state).toBe('DETECTED');
+    });
+
+    it('treats a late payment on an expired quote as a recovery case, not a failure', async () => {
+      const expired = { ...mockIntent, state: 'EXPIRED' } as PaymentIntent;
+      // First lookup: the intent still accepts a deposit. Second lookup (in the
+      // catch block): detectDeposit has already moved it to EXPIRED.
+      mockRepo.findById
+        .mockResolvedValueOnce({ ...mockIntent, state: 'AWAITING_PAYMENT' })
+        .mockResolvedValueOnce(expired);
+      mockRepo.transition.mockResolvedValue(expired);
+      const detectSpy = vi
+        .spyOn(service, 'detectDeposit')
+        .mockRejectedValue(new QuoteExpiredError(mockIntent.id));
+
+      const result = await service.recordDeposit(mockIntent.id, '0xabc', 100, '1', 'USDC');
+
+      expect(result.state).toBe('EXPIRED');
+      expect(mockWebhookService.deliverWebhook).not.toHaveBeenCalled();
+      detectSpy.mockRestore();
+    });
+
+    it('throws when the intent does not exist', async () => {
+      mockRepo.findById.mockResolvedValue(null);
+
+      await expect(service.recordDeposit('missing', '0xabc', 100, '1', 'USDC')).rejects.toThrow(
+        /missing/,
+      );
     });
   });
 });

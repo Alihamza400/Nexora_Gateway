@@ -53,6 +53,14 @@ export interface PaymentIntent {
   target_chain: string;
   accepted_assets: string[];
   quoted_rate: number | null;
+  /**
+   * Where the customer should send funds. Populated when the quote is generated.
+   * Null before quoting; the deposit watcher resolves incoming transfers to
+   * intents through this pair.
+   */
+  deposit_address: string | null;
+  deposit_asset: string | null;
+  deposit_chain: string | null;
   quote_expires_at: Date | null;
   state: IntentState;
   version: number;
@@ -74,6 +82,8 @@ export interface NewPaymentIntent {
 export type EventType =
   | 'INTENT_CREATED'
   | 'QUOTE_GENERATED'
+  /** Customer accepted the quote; deposit address is live and being watched. */
+  | 'PAYMENT_AWAITED'
   | 'QUOTE_EXPIRED'
   | 'DEPOSIT_DETECTED'
   | 'CONFIRMATION_RECEIVED'
@@ -88,6 +98,9 @@ export type EventType =
   | 'FAILED';
 
 export interface IntentEvent {
+  // Note: every EventType must be handled in
+  // PaymentIntentRepository.getExpectedNextState — the Record<EventType, IntentState>
+  // type makes an omission a compile error, which is intentional.
   id: string;
   intent_id: string;
   event_type: EventType;

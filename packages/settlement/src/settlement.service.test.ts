@@ -1,72 +1,131 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SettlementService } from './settlement.service.js';
-import type { Settlement, PaymentIntent, MerchantConfig, IChainClient, TxResult, GasEstimate } from '@crypto-gateway/shared';
+import type {
+  Settlement,
+  PaymentIntent,
+  MerchantConfig,
+  IChainClient,
+  TxResult,
+  GasEstimate,
+} from '@crypto-gateway/shared';
 
 // ─── Mock Repositories ───────────────────────────────────────────────────────
 
-function createMockSettlementRepo() {
+function createMockSettlementRepo(): {
+  store: Settlement[];
+  create: (...args: unknown[]) => Promise<Settlement>;
+  update: (...args: unknown[]) => Promise<Settlement>;
+  findById: (...args: unknown[]) => Settlement | null;
+  findByIntentId: (...args: unknown[]) => Settlement | null;
+  findPending: (...args: unknown[]) => Settlement[];
+  findRetryable: (...args: unknown[]) => Settlement[];
+  getMerchantSettledTotal: (...args: unknown[]) => { total: number; count: number };
+} {
   const store: Settlement[] = [];
   return {
     store,
-    create: vi.fn(async (params: {
-      intent_id: string;
-      merchant_id: string;
-      amount: number;
-      asset: string;
-      chain: string;
-      destination_address: string;
-    }): Promise<Settlement> => {
-      const settlement: Settlement = {
-        id: `settlement-${Date.now()}`,
-        intent_id: params.intent_id,
-        merchant_id: params.merchant_id,
-        amount: params.amount,
-        asset: params.asset,
-        chain: params.chain,
-        destination_address: params.destination_address,
-        status: 'PENDING',
-        tx_hash: null,
-        created_at: new Date(),
-        updated_at: new Date(),
-        completed_at: null,
-      };
-      store.push(settlement);
-      return settlement;
-    }),
-    update: vi.fn(async (id: string, params: { status?: Settlement['status']; tx_hash?: string; completed_at?: Date }) => {
-      const settlement = store.find((s) => s.id === id);
-      if (settlement) {
-        if (params.status) settlement.status = params.status;
-        if (params.tx_hash) settlement.tx_hash = params.tx_hash;
-        if (params.completed_at) settlement.completed_at = params.completed_at;
-        settlement.updated_at = new Date();
-      }
-      return settlement!;
-    }),
-    findById: vi.fn(async (id: string) => store.find((s) => s.id === id) ?? null),
-    findByIntentId: vi.fn(async (intentId: string) => store.find((s) => s.intent_id === intentId) ?? null),
-    findPending: vi.fn(async () => store.filter((s) => s.status === 'PENDING' || s.status === 'RETRYING')),
-    findRetryable: vi.fn(async () => []),
-    getMerchantSettledTotal: vi.fn(async () => ({ total: 0, count: 0 })),
+    create: vi.fn(
+      (params: {
+        intent_id: string;
+        merchant_id: string;
+        amount: number;
+        asset: string;
+        chain: string;
+        destination_address: string;
+      }): Promise<Settlement> => {
+        const settlement: Settlement = {
+          id: `settlement-${Date.now()}`,
+          intent_id: params.intent_id,
+          merchant_id: params.merchant_id,
+          amount: params.amount,
+          asset: params.asset,
+          chain: params.chain,
+          destination_address: params.destination_address,
+          status: 'PENDING',
+          tx_hash: null,
+          created_at: new Date(),
+          updated_at: new Date(),
+          completed_at: null,
+        };
+        store.push(settlement);
+        return Promise.resolve(settlement);
+      },
+    ),
+    update: vi.fn(
+      (
+        id: string,
+        params: { status?: Settlement['status']; tx_hash?: string; completed_at?: Date },
+      ): Promise<Settlement> => {
+        const settlement = store.find((s) => s.id === id);
+        if (settlement) {
+          if (params.status) settlement.status = params.status;
+          if (params.tx_hash) settlement.tx_hash = params.tx_hash;
+          if (params.completed_at) settlement.completed_at = params.completed_at;
+          settlement.updated_at = new Date();
+        }
+        return Promise.resolve(settlement!);
+      },
+    ),
+    findById: vi.fn((id: string) => store.find((s) => s.id === id) ?? null),
+    findByIntentId: vi.fn(
+      (intentId: string) => store.find((s) => s.intent_id === intentId) ?? null,
+    ),
+    findPending: vi.fn(() =>
+      store.filter((s) => s.status === 'PENDING' || s.status === 'RETRYING'),
+    ),
+    findRetryable: vi.fn(() => []),
+    getMerchantSettledTotal: vi.fn(() => ({ total: 0, count: 0 })),
   };
 }
 
-function createMockLedgerService() {
+function createMockLedgerService(): {
+  calculateSettlementAmount: (...args: unknown[]) => number;
+  recordFee: (...args: unknown[]) => { id: string };
+  recordSettlement: (...args: unknown[]) => { id: string };
+  recordDeposit: (...args: unknown[]) => Record<string, never>;
+  recordRefund: (...args: unknown[]) => Record<string, never>;
+  recordFxGainLoss: (...args: unknown[]) => Record<string, never>;
+  getBalance: (...args: unknown[]) => number;
+  getMerchantBalance: (...args: unknown[]) => number;
+  getStatement: (...args: unknown[]) => {
+    entries: never[];
+    total_debits: number;
+    total_credits: number;
+    closing_balance: number;
+  };
+  getEntriesByIntent: (...args: unknown[]) => never[];
+  verifyConsistency: (...args: unknown[]) => {
+    isConsistent: boolean;
+    totalDebits: number;
+    totalCredits: number;
+    difference: number;
+  };
+} {
   return {
     calculateSettlementAmount: vi.fn((targetAmount: number, feePercentage: number) => {
       const fee = targetAmount * (feePercentage / 100);
       return Math.round((targetAmount - fee) * 1e8) / 1e8;
     }),
-    recordFee: vi.fn(async () => ({ id: 'fee-entry' })),
-    recordSettlement: vi.fn(async () => ({ id: 'settlement-entry' })),
-    recordDeposit: vi.fn(async () => ({})),
-    recordRefund: vi.fn(async () => ({})),
-    recordFxGainLoss: vi.fn(async () => ({})),
-    getBalance: vi.fn(async () => 0),
-    getMerchantBalance: vi.fn(async () => 0),
-    getStatement: vi.fn(async () => ({ entries: [], total_debits: 0, total_credits: 0, closing_balance: 0 })),
-    getEntriesByIntent: vi.fn(async () => []),
-    verifyConsistency: vi.fn(async () => ({ isConsistent: true, totalDebits: 0, totalCredits: 0, difference: 0 })),
+    recordFee: vi.fn(() => ({ id: 'fee-entry' })),
+    recordSettlement: vi.fn(() => ({ id: 'settlement-entry' })),
+    recordDeposit: vi.fn(() => ({})),
+    recordRefund: vi.fn(() => ({})),
+    recordFxGainLoss: vi.fn(() => ({})),
+    getBalance: vi.fn(() => 0),
+    getMerchantBalance: vi.fn(() => 0),
+    getStatement: vi.fn(() => ({
+      entries: [],
+      total_debits: 0,
+      total_credits: 0,
+      closing_balance: 0,
+    })),
+    getEntriesByIntent: vi.fn(() => []),
+    verifyConsistency: vi.fn(() => ({
+      isConsistent: true,
+      totalDebits: 0,
+      totalCredits: 0,
+      difference: 0,
+    })),
   };
 }
 
@@ -76,31 +135,40 @@ function createMockChainClient(overrides?: Partial<IChainClient>): IChainClient 
     chainName: 'Base',
     getConfirmationDepth: vi.fn(() => 1),
     getBlockTime: vi.fn(() => 2),
-    getNativeAsset: vi.fn(() => ({ address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, name: 'Ether' })),
+    getNativeAsset: vi.fn(() => ({
+      address: '0x0000000000000000000000000000000000000000',
+      symbol: 'ETH',
+      decimals: 18,
+      name: 'Ether',
+    })),
     validateAddress: vi.fn(() => true),
-    formatAddress: vi.fn((addr) => addr),
+    formatAddress: vi.fn((addr: string): string => addr),
     watchDeposits: vi.fn(() => () => {}),
-    estimateGas: vi.fn(async (): Promise<GasEstimate> => ({
-      gasLimit: 21000,
-      gasPrice: 1000000000,
-      maxFeePerGas: 1000000000,
-      maxPriorityFeePerGas: 100000000,
-      totalCost: 0.000021,
-      totalCostUSD: 0.05,
-    })),
-    submitTransaction: vi.fn(async (): Promise<TxResult> => ({
-      txHash: '0xMockTxHash',
-      nonce: 1,
-      blockNumber: 0,
-    })),
-    getTransactionStatus: vi.fn(async () => ({
+    estimateGas: vi.fn((): Promise<GasEstimate> =>
+      Promise.resolve({
+        gasLimit: 21000,
+        gasPrice: 1000000000,
+        maxFeePerGas: 1000000000,
+        maxPriorityFeePerGas: 100000000,
+        totalCost: 0.000021,
+        totalCostUSD: 0.05,
+      }),
+    ),
+    submitTransaction: vi.fn((): Promise<TxResult> =>
+      Promise.resolve({
+        txHash: '0xMockTxHash',
+        nonce: 1,
+        blockNumber: 0,
+      }),
+    ),
+    getTransactionStatus: vi.fn(() => ({
       txHash: '0xMockTxHash',
       status: 'CONFIRMED' as const,
       confirmations: 12,
       blockNumber: 100,
       gasUsed: 21000,
     })),
-    getTransactionReceipt: vi.fn(async () => ({
+    getTransactionReceipt: vi.fn(() => ({
       txHash: '0xMockTxHash',
       status: true,
       blockNumber: 100,
@@ -109,13 +177,23 @@ function createMockChainClient(overrides?: Partial<IChainClient>): IChainClient 
       effectiveGasPrice: 1000000000,
       logs: [],
     })),
-    getBalance: vi.fn(async () => ({
-      asset: { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, name: 'Ether' },
+    getBalance: vi.fn(() => ({
+      asset: {
+        address: '0x0000000000000000000000000000000000000000',
+        symbol: 'ETH',
+        decimals: 18,
+        name: 'Ether',
+      },
       amount: '1000000000000000000',
       amountUSD: 2000,
     })),
-    getTokenBalance: vi.fn(async () => ({
-      asset: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6, name: 'USD Coin' },
+    getTokenBalance: vi.fn(() => ({
+      asset: {
+        address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+        symbol: 'USDC',
+        decimals: 6,
+        name: 'USD Coin',
+      },
       amount: '1000000000',
       amountUSD: 1000,
     })),
@@ -135,6 +213,9 @@ const mockIntent: PaymentIntent = {
   accepted_assets: ['USDC', 'ETH'],
   quoted_rate: 1.0,
   quote_expires_at: new Date(Date.now() + 300000),
+  deposit_address: null,
+  deposit_asset: null,
+  deposit_chain: null,
   state: 'SETTLING',
   version: 1,
   created_at: new Date(),
@@ -211,6 +292,7 @@ describe('SettlementService', () => {
 
     it('should estimate gas before submission', async () => {
       const chainClient = createMockChainClient();
+      const estimateGasMock = chainClient['estimateGas'];
 
       await settlementService.settleIntent({
         intent: mockIntent,
@@ -218,11 +300,12 @@ describe('SettlementService', () => {
         chainClient,
       });
 
-      expect(chainClient.estimateGas).toHaveBeenCalled();
+      expect(estimateGasMock).toHaveBeenCalled();
     });
 
     it('should submit transaction to chain', async () => {
       const chainClient = createMockChainClient();
+      const submitTransactionMock = chainClient['submitTransaction'];
 
       await settlementService.settleIntent({
         intent: mockIntent,
@@ -230,11 +313,12 @@ describe('SettlementService', () => {
         chainClient,
       });
 
-      expect(chainClient.submitTransaction).toHaveBeenCalled();
+      expect(submitTransactionMock).toHaveBeenCalled();
     });
 
     it('should wait for confirmation depth', async () => {
       const chainClient = createMockChainClient();
+      const getTransactionStatusMock = chainClient['getTransactionStatus'];
 
       await settlementService.settleIntent({
         intent: mockIntent,
@@ -242,7 +326,7 @@ describe('SettlementService', () => {
         chainClient,
       });
 
-      expect(chainClient.getTransactionStatus).toHaveBeenCalled();
+      expect(getTransactionStatusMock).toHaveBeenCalled();
     });
 
     it('should update settlement status to COMPLETED', async () => {
@@ -308,7 +392,7 @@ describe('SettlementService', () => {
 
     it('should handle chain client errors gracefully', async () => {
       const chainClient = createMockChainClient({
-        submitTransaction: vi.fn(async () => {
+        submitTransaction: vi.fn(() => {
           throw new Error('NETWORK_ERROR: Connection refused');
         }),
       });
@@ -348,9 +432,7 @@ describe('SettlementService', () => {
     });
 
     it('should throw if settlement not found', async () => {
-      await expect(
-        settlementService.retrySettlement('nonexistent'),
-      ).rejects.toThrow();
+      await expect(settlementService.retrySettlement('nonexistent')).rejects.toThrow();
     });
   });
 

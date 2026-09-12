@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Fastify, { FastifyInstance } from 'fastify';
 import { intentRoutes } from './intents.js';
 import type { PaymentIntent, IntentEvent } from '@crypto-gateway/shared';
+import type { PaymentIntentService } from '@crypto-gateway/payment-intent';
 
 const mockIntent: PaymentIntent = {
   id: '550e8400-e29b-41d4-a716-446655440000',
@@ -13,6 +14,9 @@ const mockIntent: PaymentIntent = {
   accepted_assets: ['USDC', 'USDT'],
   quoted_rate: null,
   quote_expires_at: null,
+  deposit_address: null,
+  deposit_asset: null,
+  deposit_chain: null,
   state: 'CREATED',
   version: 1,
   created_at: new Date(),
@@ -28,7 +32,15 @@ const mockEvent: IntentEvent = {
   created_at: new Date(),
 };
 
-function createMockIntentService() {
+interface MockIntentService {
+  createIntent: ReturnType<typeof vi.fn>;
+  getIntent: ReturnType<typeof vi.fn>;
+  getIntentWithEvents: ReturnType<typeof vi.fn>;
+  getMerchantIntents: ReturnType<typeof vi.fn>;
+  generateQuote: ReturnType<typeof vi.fn>;
+}
+
+function createMockIntentService(): MockIntentService {
   return {
     createIntent: vi.fn().mockResolvedValue(mockIntent),
     getIntent: vi.fn().mockResolvedValue(mockIntent),
@@ -56,7 +68,7 @@ describe('Intent Routes', () => {
   beforeEach(async () => {
     app = Fastify({ logger: false });
     mockService = createMockIntentService();
-    await intentRoutes(app, mockService as any);
+    intentRoutes(app, mockService as unknown as PaymentIntentService);
     await app.ready();
   });
 
@@ -78,7 +90,7 @@ describe('Intent Routes', () => {
       });
 
       expect(response.statusCode).toBe(201);
-      const body = JSON.parse(response.payload);
+      const body = JSON.parse(response.payload) as Record<string, unknown>;
       expect(body.intent_id).toBe(mockIntent.id);
       expect(body.state).toBe('CREATED');
       expect(body.created_at).toBeDefined();
@@ -94,7 +106,7 @@ describe('Intent Routes', () => {
       });
 
       expect(response.statusCode).toBe(400);
-      const body = JSON.parse(response.payload);
+      const body = JSON.parse(response.payload) as { error: { code: string } };
       expect(body.error.code).toBe('VALIDATION_ERROR');
     });
 
@@ -145,7 +157,7 @@ describe('Intent Routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      const body = JSON.parse(response.payload);
+      const body = JSON.parse(response.payload) as Record<string, unknown> & { events: unknown[] };
       expect(body.intent_id).toBe(mockIntent.id);
       expect(body.merchant_id).toBe(mockIntent.merchant_id);
       expect(body.state).toBe(mockIntent.state);
@@ -162,7 +174,7 @@ describe('Intent Routes', () => {
       });
 
       expect(response.statusCode).toBe(404);
-      const body = JSON.parse(response.payload);
+      const body = JSON.parse(response.payload) as { error: { code: string } };
       expect(body.error.code).toBe('INTENT_NOT_FOUND');
     });
   });
@@ -177,7 +189,7 @@ describe('Intent Routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      const body = JSON.parse(response.payload);
+      const body = JSON.parse(response.payload) as Record<string, unknown> & { intents: unknown[] };
       expect(body.intents).toBeDefined();
       expect(body.intents.length).toBe(1);
     });
@@ -220,7 +232,9 @@ describe('Intent Routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      const body = JSON.parse(response.payload);
+      const body = JSON.parse(response.payload) as {
+        quote: { rate: number; deposit_address: string };
+      };
       expect(body.quote).toBeDefined();
       expect(body.quote.rate).toBe(1.0);
       expect(body.quote.deposit_address).toBe('0xDepositAddress');
@@ -239,7 +253,9 @@ describe('Intent Routes', () => {
     });
 
     it('returns 404 for non-existent intent', async () => {
-      mockService.generateQuote.mockRejectedValue(new Error('Payment intent not found: nonexistent'));
+      mockService.generateQuote.mockRejectedValue(
+        new Error('Payment intent not found: nonexistent'),
+      );
 
       const response = await app.inject({
         method: 'POST',
