@@ -18,7 +18,13 @@ export type { CircuitState, CircuitBreakerOptions } from './circuit-breaker.js';
 export { ProviderRegistry } from './provider-registry.js';
 export { BaseRouteProvider, isCircuitOpenError } from './base-route-provider.js';
 
-// Mock providers (for testing/development)
+// Real providers (production)
+export { LifiRouteProvider } from './providers/lifi-route-provider.js';
+export type { LifiProviderConfig } from './providers/lifi-route-provider.js';
+export { SocketRouteProvider } from './providers/socket-route-provider.js';
+export type { SocketProviderConfig } from './providers/socket-route-provider.js';
+
+// Mock providers (for testing/development only)
 export { MockLiFiProvider } from './providers/mock-lifi-provider.js';
 export type { MockLiFiConfig } from './providers/mock-lifi-provider.js';
 export { MockSocketProvider } from './providers/mock-socket-provider.js';
