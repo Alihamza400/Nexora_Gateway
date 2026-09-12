@@ -1,0 +1,31 @@
+{
+  "name": "@crypto-gateway/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@crypto-gateway/chain-abstraction": "*",
+    "@crypto-gateway/compliance": "*",
+    "@crypto-gateway/db": "*",
+    "@crypto-gateway/gas-abstraction": "*",
+    "@crypto-gateway/payment-intent": "*",
+    "@crypto-gateway/rate-lock": "*",
+    "@crypto-gateway/reconciliation": "*",
+    "@crypto-gateway/recovery": "*",
+    "@crypto-gateway/routing-engine": "*",
+    "@crypto-gateway/settlement": "*",
+    "@crypto-gateway/shared": "*"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
