@@ -6,6 +6,7 @@ import type {
   TransactionInfo,
   SanctionsMatch,
 } from '@crypto-gateway/shared';
+import { ScreeningUnavailableError, HttpError, HttpTimeoutError } from '@crypto-gateway/shared';
 
 /**
  * Chainalysis KYT API configuration.
@@ -48,17 +49,17 @@ export class ChainalysisRiskScorer implements IRiskScorer {
   /**
    * Screen an address for risk using Chainalysis KYT API.
    */
-  async screenAddress(address: string, chain: string): Promise<RiskResult> {
+  screenAddress(address: string, chain: string): Promise<RiskResult> {
     // Check cache first
     const cacheKey = `${address.toLowerCase()}:${chain}`;
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      return cached.result;
+      return Promise.resolve(cached.result);
     }
 
     try {
       // Call Chainalysis API
-      const riskData = await this.callChainalysisRisk(address, chain);
+      const riskData = this.callChainalysisRisk(address, chain);
 
       // Parse response into RiskResult
       const result = this.parseRiskResponse(address, chain, riskData);
@@ -69,11 +70,26 @@ export class ChainalysisRiskScorer implements IRiskScorer {
         expiresAt: Date.now() + this.cacheTtlMs,
       });
 
-      return result;
+      return Promise.resolve(result);
     } catch (error) {
-      // On API failure, return a safe default (don't block legitimate traffic)
-      console.error(`Chainalysis API error for ${address}: ${error}`);
-      return this.createSafeDefault(address, chain);
+      // FAIL-CLOSED: On API failure, throw ScreeningUnavailableError
+      // Payment cannot proceed without valid screening (per ADR compliance policy)
+      const reason = error instanceof Error ? error.message : String(error);
+      console.error(`Chainalysis API error for ${address}: ${reason}`);
+
+      // Wrap HTTP errors with more context
+      if (error instanceof HttpError) {
+        return Promise.reject(
+          new ScreeningUnavailableError('chainalysis', `HTTP ${error.status}: ${reason}`),
+        );
+      }
+      if (error instanceof HttpTimeoutError) {
+        return Promise.reject(
+          new ScreeningUnavailableError('chainalysis', `Request timed out: ${reason}`),
+        );
+      }
+
+      return Promise.reject(new ScreeningUnavailableError('chainalysis', reason));
     }
   }
 
@@ -99,14 +115,14 @@ export class ChainalysisRiskScorer implements IRiskScorer {
   /**
    * Get cached risk score for an address.
    */
-  async getRiskScore(address: string): Promise<number> {
+  getRiskScore(address: string): Promise<number> {
     // Check cache
     for (const [key, value] of this.cache.entries()) {
       if (key.startsWith(address.toLowerCase()) && value.expiresAt > Date.now()) {
-        return value.result.riskScore;
+        return Promise.resolve(value.result.riskScore);
       }
     }
-    return 0;
+    return Promise.resolve(0);
   }
 
   /**
@@ -137,10 +153,7 @@ export class ChainalysisRiskScorer implements IRiskScorer {
    * Call Chainalysis KYT Risk API.
    * In production, this would make HTTP requests to Chainalysis.
    */
-  private callChainalysisRisk(
-    address: string,
-    chain: string,
-  ): ChainalysisRiskResponse {
+  private callChainalysisRisk(address: string, chain: string): ChainalysisRiskResponse {
     // In production, this would:
     // 1. Make HTTP request to Chainalysis API using this._config.apiKey and this._config.baseUrl
     // 2. Handle authentication (API key in header)
@@ -266,7 +279,7 @@ export class ChainalysisRiskScorer implements IRiskScorer {
       return 95; // Burn address - high risk
     }
 
-    return hash % 60 + 10; // 10-70 range for normal addresses
+    return (hash % 60) + 10; // 10-70 range for normal addresses
   }
 
   /**
@@ -290,29 +303,6 @@ export class ChainalysisRiskScorer implements IRiskScorer {
     // In production, this would query Chainalysis sanctions list
     const hash = this.simpleHash(address);
     return hash % 100 < 1 ? 100 : 0; // 1% chance of sanctions match
-  }
-
-  /**
-   * Create safe default on API failure.
-   */
-  private createSafeDefault(address: string, chain: string): RiskResult {
-    return {
-      address,
-      chain,
-      riskScore: 0,
-      riskLevel: 'LOW',
-      flags: [],
-      details: {
-        sanctionsMatch: null,
-        walletAge: 0,
-        transactionCount: 0,
-        totalVolume: 0,
-        knownAssociations: [],
-        jurisdictionRisk: 0,
-      },
-      screenedAt: new Date(),
-      expiresAt: new Date(Date.now() + this.cacheTtlMs),
-    };
   }
 
   private determineRiskLevel(score: number): RiskLevel {

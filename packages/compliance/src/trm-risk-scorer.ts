@@ -6,6 +6,7 @@ import type {
   TransactionInfo,
   SanctionsMatch,
 } from '@crypto-gateway/shared';
+import { ScreeningUnavailableError, HttpError, HttpTimeoutError } from '@crypto-gateway/shared';
 
 /**
  * TRM Labs API configuration.
@@ -46,17 +47,17 @@ export class TRMRiskScorer implements IRiskScorer {
   /**
    * Screen an address for risk using TRM Forensics API.
    */
-  async screenAddress(address: string, chain: string): Promise<RiskResult> {
+  screenAddress(address: string, chain: string): Promise<RiskResult> {
     // Check cache first
     const cacheKey = `${address.toLowerCase()}:${chain}`;
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      return cached.result;
+      return Promise.resolve(cached.result);
     }
 
     try {
       // Call TRM API
-      const riskData = await this.callTRMRisk(address, chain);
+      const riskData = this.callTRMRisk(address, chain);
 
       // Parse response into RiskResult
       const result = this.parseRiskResponse(address, chain, riskData);
@@ -67,11 +68,24 @@ export class TRMRiskScorer implements IRiskScorer {
         expiresAt: Date.now() + this.cacheTtlMs,
       });
 
-      return result;
+      return Promise.resolve(result);
     } catch (error) {
-      // On API failure, return safe default
-      console.error(`TRM API error for ${address}: ${error}`);
-      return this.createSafeDefault(address, chain);
+      // FAIL-CLOSED: On API failure, throw ScreeningUnavailableError
+      // Payment cannot proceed without valid screening (per ADR compliance policy)
+      const reason = error instanceof Error ? error.message : String(error);
+      console.error(`TRM API error for ${address}: ${reason}`);
+
+      // Wrap HTTP errors with more context
+      if (error instanceof HttpError) {
+        return Promise.reject(
+          new ScreeningUnavailableError('trm', `HTTP ${error.status}: ${reason}`),
+        );
+      }
+      if (error instanceof HttpTimeoutError) {
+        return Promise.reject(new ScreeningUnavailableError('trm', `Request timed out: ${reason}`));
+      }
+
+      return Promise.reject(new ScreeningUnavailableError('trm', reason));
     }
   }
 
@@ -97,13 +111,13 @@ export class TRMRiskScorer implements IRiskScorer {
   /**
    * Get cached risk score for an address.
    */
-  async getRiskScore(address: string): Promise<number> {
+  getRiskScore(address: string): Promise<number> {
     for (const [key, value] of this.cache.entries()) {
       if (key.startsWith(address.toLowerCase()) && value.expiresAt > Date.now()) {
-        return value.result.riskScore;
+        return Promise.resolve(value.result.riskScore);
       }
     }
-    return 0;
+    return Promise.resolve(0);
   }
 
   /**
@@ -140,10 +154,7 @@ export class TRMRiskScorer implements IRiskScorer {
   /**
    * Call TRM Forensics API.
    */
-  private callTRMRisk(
-    address: string,
-    chain: string,
-  ): TRMRiskResponse {
+  private callTRMRisk(address: string, chain: string): TRMRiskResponse {
     // In production, this would:
     // 1. Make HTTP request to TRM API using this._config.apiKey and this._config.baseUrl
     // 2. Handle authentication (API key in header)
@@ -167,11 +178,7 @@ export class TRMRiskScorer implements IRiskScorer {
   /**
    * Parse TRM response into RiskResult.
    */
-  private parseRiskResponse(
-    address: string,
-    chain: string,
-    data: TRMRiskResponse,
-  ): RiskResult {
+  private parseRiskResponse(address: string, chain: string, data: TRMRiskResponse): RiskResult {
     const flags: RiskFlag[] = [];
 
     // Check sanctions
@@ -248,7 +255,7 @@ export class TRMRiskScorer implements IRiskScorer {
       return 95;
     }
 
-    return hash % 50 + 10; // 10-60 range
+    return (hash % 50) + 10; // 10-60 range
   }
 
   private simulateExposureTypes(address: string): string[] {
@@ -265,26 +272,6 @@ export class TRMRiskScorer implements IRiskScorer {
   private checkSanctionsStatus(address: string): string {
     const hash = this.simpleHash(address);
     return hash % 100 < 1 ? 'sanctioned' : 'not_sanctioned';
-  }
-
-  private createSafeDefault(address: string, chain: string): RiskResult {
-    return {
-      address,
-      chain,
-      riskScore: 0,
-      riskLevel: 'LOW',
-      flags: [],
-      details: {
-        sanctionsMatch: null,
-        walletAge: 0,
-        transactionCount: 0,
-        totalVolume: 0,
-        knownAssociations: [],
-        jurisdictionRisk: 0,
-      },
-      screenedAt: new Date(),
-      expiresAt: new Date(Date.now() + this.cacheTtlMs),
-    };
   }
 
   private determineRiskLevel(score: number): RiskLevel {

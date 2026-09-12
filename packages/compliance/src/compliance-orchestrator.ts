@@ -4,6 +4,7 @@ import type {
   ComplianceResult,
   TransactionInfo,
 } from '@crypto-gateway/shared';
+import { ScreeningUnavailableError } from '@crypto-gateway/shared';
 import { VelocityChecker, type VelocityCheckResult } from './velocity-checker.js';
 
 /**
@@ -72,10 +73,7 @@ export class ComplianceOrchestrator {
   private readonly config: ComplianceConfig;
   private readonly auditLog: AuditLogEntry[] = [];
 
-  constructor(
-    riskScorer: IRiskScorer,
-    config?: Partial<ComplianceConfig>,
-  ) {
+  constructor(riskScorer: IRiskScorer, config?: Partial<ComplianceConfig>) {
     this.riskScorer = riskScorer;
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.velocityChecker = new VelocityChecker({
@@ -89,6 +87,7 @@ export class ComplianceOrchestrator {
 
   /**
    * Screen an address at intent creation.
+   * FAIL-CLOSED: If screening is unavailable, block the payment.
    */
   async screenIntentCreation(
     intentId: string,
@@ -96,102 +95,167 @@ export class ComplianceOrchestrator {
     chain: string,
     amount: number,
   ): Promise<ComplianceResult> {
-    // 1. Risk scoring
-    const sourceRisk = await this.riskScorer.screenAddress(sourceAddress, chain);
+    try {
+      // 1. Risk scoring
+      const sourceRisk = await this.riskScorer.screenAddress(sourceAddress, chain);
 
-    // 2. Velocity checks
-    let velocityResult: VelocityCheckResult | null = null;
-    if (this.config.enableVelocityChecks) {
-      velocityResult = this.velocityChecker.checkVelocity({
-        from: sourceAddress,
-        to: '',
-        amount,
-        asset: '',
+      // 2. Velocity checks
+      let velocityResult: VelocityCheckResult | null = null;
+      if (this.config.enableVelocityChecks) {
+        velocityResult = this.velocityChecker.checkVelocity({
+          from: sourceAddress,
+          to: '',
+          amount,
+          asset: '',
+          chain,
+          timestamp: new Date(),
+        });
+      }
+
+      // 3. Determine compliance decision
+      const decision = this.makeDecision(sourceRisk, velocityResult, amount);
+
+      // 4. Log audit entry
+      this.logAuditEntry({
+        intentId,
+        address: sourceAddress,
         chain,
-        timestamp: new Date(),
+        action: 'INTENT_CREATION',
+        decision: decision.blocked ? 'BLOCK' : 'ALLOW',
+        riskScore: sourceRisk.riskScore,
+        riskLevel: sourceRisk.riskLevel,
+        flags: [...sourceRisk.flags, ...(velocityResult?.flags ?? [])],
+        details: {
+          amount,
+          velocityExceeded: velocityResult?.exceeded ?? false,
+        },
       });
+
+      return {
+        intentId,
+        sourceRisk,
+        destinationRisk: null,
+        kycRequired: amount > 10000, // KYC threshold
+        kycVerified: false,
+        blocked: decision.blocked,
+        blockReason: decision.reason,
+        screenedAt: new Date(),
+      };
+    } catch (error) {
+      // FAIL-CLOSED: If screening fails, block the payment
+      if (error instanceof ScreeningUnavailableError) {
+        this.logAuditEntry({
+          intentId,
+          address: sourceAddress,
+          chain,
+          action: 'INTENT_CREATION',
+          decision: 'BLOCK',
+          riskScore: -1,
+          riskLevel: 'UNKNOWN',
+          flags: [],
+          details: {
+            amount,
+            screeningError: error.message,
+            failClosed: true,
+          },
+        });
+
+        return {
+          intentId,
+          sourceRisk: null,
+          destinationRisk: null,
+          kycRequired: true,
+          kycVerified: false,
+          blocked: true,
+          blockReason: `Screening unavailable: ${error.message}. Payment blocked (fail-closed).`,
+          screenedAt: new Date(),
+        };
+      }
+      throw error;
     }
-
-    // 3. Determine compliance decision
-    const decision = this.makeDecision(sourceRisk, velocityResult, amount);
-
-    // 4. Log audit entry
-    this.logAuditEntry({
-      intentId,
-      address: sourceAddress,
-      chain,
-      action: 'INTENT_CREATION',
-      decision: decision.blocked ? 'BLOCK' : 'ALLOW',
-      riskScore: sourceRisk.riskScore,
-      riskLevel: sourceRisk.riskLevel,
-      flags: [...sourceRisk.flags, ...(velocityResult?.flags ?? [])],
-      details: {
-        amount,
-        velocityExceeded: velocityResult?.exceeded ?? false,
-      },
-    });
-
-    return {
-      intentId,
-      sourceRisk,
-      destinationRisk: null,
-      kycRequired: amount > 10000, // KYC threshold
-      kycVerified: false,
-      blocked: decision.blocked,
-      blockReason: decision.reason,
-      screenedAt: new Date(),
-    };
   }
 
   /**
    * Screen a deposit transaction.
+   * FAIL-CLOSED: If screening is unavailable, block the payment.
    */
-  async screenDeposit(
-    intentId: string,
-    tx: TransactionInfo,
-  ): Promise<ComplianceResult> {
-    // 1. Transaction screening
-    const sourceRisk = await this.riskScorer.screenTransaction(tx);
+  async screenDeposit(intentId: string, tx: TransactionInfo): Promise<ComplianceResult> {
+    try {
+      // 1. Transaction screening
+      const sourceRisk = await this.riskScorer.screenTransaction(tx);
 
-    // 2. Velocity checks
-    let velocityResult: VelocityCheckResult | null = null;
-    if (this.config.enableVelocityChecks) {
-      velocityResult = this.velocityChecker.checkVelocity(tx);
+      // 2. Velocity checks
+      let velocityResult: VelocityCheckResult | null = null;
+      if (this.config.enableVelocityChecks) {
+        velocityResult = this.velocityChecker.checkVelocity(tx);
+      }
+
+      // 3. Determine decision
+      const decision = this.makeDecision(sourceRisk, velocityResult, tx.amount);
+
+      // 4. Log audit entry
+      this.logAuditEntry({
+        intentId,
+        address: tx.from,
+        chain: tx.chain,
+        action: 'DEPOSIT_DETECTION',
+        decision: decision.blocked ? 'BLOCK' : 'ALLOW',
+        riskScore: sourceRisk.riskScore,
+        riskLevel: sourceRisk.riskLevel,
+        flags: [...sourceRisk.flags, ...(velocityResult?.flags ?? [])],
+        details: {
+          amount: tx.amount,
+          txHash: tx.from,
+        },
+      });
+
+      return {
+        intentId,
+        sourceRisk,
+        destinationRisk: null,
+        kycRequired: tx.amount > 10000,
+        kycVerified: false,
+        blocked: decision.blocked,
+        blockReason: decision.reason,
+        screenedAt: new Date(),
+      };
+    } catch (error) {
+      // FAIL-CLOSED: If screening fails, block the payment
+      if (error instanceof ScreeningUnavailableError) {
+        this.logAuditEntry({
+          intentId,
+          address: tx.from,
+          chain: tx.chain,
+          action: 'DEPOSIT_DETECTION',
+          decision: 'BLOCK',
+          riskScore: -1,
+          riskLevel: 'UNKNOWN',
+          flags: [],
+          details: {
+            amount: tx.amount,
+            screeningError: error.message,
+            failClosed: true,
+          },
+        });
+
+        return {
+          intentId,
+          sourceRisk: null,
+          destinationRisk: null,
+          kycRequired: true,
+          kycVerified: false,
+          blocked: true,
+          blockReason: `Screening unavailable: ${error.message}. Deposit blocked (fail-closed).`,
+          screenedAt: new Date(),
+        };
+      }
+      throw error;
     }
-
-    // 3. Determine decision
-    const decision = this.makeDecision(sourceRisk, velocityResult, tx.amount);
-
-    // 4. Log audit entry
-    this.logAuditEntry({
-      intentId,
-      address: tx.from,
-      chain: tx.chain,
-      action: 'DEPOSIT_DETECTION',
-      decision: decision.blocked ? 'BLOCK' : 'ALLOW',
-      riskScore: sourceRisk.riskScore,
-      riskLevel: sourceRisk.riskLevel,
-      flags: [...sourceRisk.flags, ...(velocityResult?.flags ?? [])],
-      details: {
-        amount: tx.amount,
-        txHash: tx.from,
-      },
-    });
-
-    return {
-      intentId,
-      sourceRisk,
-      destinationRisk: null,
-      kycRequired: tx.amount > 10000,
-      kycVerified: false,
-      blocked: decision.blocked,
-      blockReason: decision.reason,
-      screenedAt: new Date(),
-    };
   }
 
   /**
    * Screen for settlement.
+   * FAIL-CLOSED: If screening is unavailable, block the settlement.
    */
   async screenSettlement(
     intentId: string,
@@ -199,37 +263,70 @@ export class ComplianceOrchestrator {
     chain: string,
     amount: number,
   ): Promise<ComplianceResult> {
-    // 1. Risk scoring for destination
-    const destinationRisk = await this.riskScorer.screenAddress(destinationAddress, chain);
+    try {
+      // 1. Risk scoring for destination
+      const destinationRisk = await this.riskScorer.screenAddress(destinationAddress, chain);
 
-    // 2. Determine decision
-    const decision = this.makeDecision(destinationRisk, null, amount);
+      // 2. Determine decision
+      const decision = this.makeDecision(destinationRisk, null, amount);
 
-    // 3. Log audit entry
-    this.logAuditEntry({
-      intentId,
-      address: destinationAddress,
-      chain,
-      action: 'SETTLEMENT',
-      decision: decision.blocked ? 'BLOCK' : 'ALLOW',
-      riskScore: destinationRisk.riskScore,
-      riskLevel: destinationRisk.riskLevel,
-      flags: destinationRisk.flags,
-      details: {
-        amount,
-      },
-    });
+      // 3. Log audit entry
+      this.logAuditEntry({
+        intentId,
+        address: destinationAddress,
+        chain,
+        action: 'SETTLEMENT',
+        decision: decision.blocked ? 'BLOCK' : 'ALLOW',
+        riskScore: destinationRisk.riskScore,
+        riskLevel: destinationRisk.riskLevel,
+        flags: destinationRisk.flags,
+        details: {
+          amount,
+        },
+      });
 
-    return {
-      intentId,
-      sourceRisk: null,
-      destinationRisk,
-      kycRequired: amount > 10000,
-      kycVerified: false,
-      blocked: decision.blocked,
-      blockReason: decision.reason,
-      screenedAt: new Date(),
-    };
+      return {
+        intentId,
+        sourceRisk: null,
+        destinationRisk,
+        kycRequired: amount > 10000,
+        kycVerified: false,
+        blocked: decision.blocked,
+        blockReason: decision.reason,
+        screenedAt: new Date(),
+      };
+    } catch (error) {
+      // FAIL-CLOSED: If screening fails, block the settlement
+      if (error instanceof ScreeningUnavailableError) {
+        this.logAuditEntry({
+          intentId,
+          address: destinationAddress,
+          chain,
+          action: 'SETTLEMENT',
+          decision: 'BLOCK',
+          riskScore: -1,
+          riskLevel: 'UNKNOWN',
+          flags: [],
+          details: {
+            amount,
+            screeningError: error.message,
+            failClosed: true,
+          },
+        });
+
+        return {
+          intentId,
+          sourceRisk: null,
+          destinationRisk: null,
+          kycRequired: true,
+          kycVerified: false,
+          blocked: true,
+          blockReason: `Screening unavailable: ${error.message}. Settlement blocked (fail-closed).`,
+          screenedAt: new Date(),
+        };
+      }
+      throw error;
+    }
   }
 
   /**

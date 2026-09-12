@@ -16,12 +16,10 @@ export class IntentNotFoundError extends GatewayError {
 
 export class InvalidTransitionError extends GatewayError {
   constructor(from: string, to: string) {
-    super(
-      'INVALID_TRANSITION',
-      `Invalid state transition from ${from} to ${to}`,
-      400,
-      { from, to },
-    );
+    super('INVALID_TRANSITION', `Invalid state transition from ${from} to ${to}`, 400, {
+      from,
+      to,
+    });
   }
 }
 
@@ -81,12 +79,11 @@ export class SettlementFailedError extends GatewayError {
 
 export class InsufficientBalanceError extends GatewayError {
   constructor(chain: string, required: number, available: number) {
-    super(
-      'INSUFFICIENT_BALANCE',
-      `Insufficient balance on ${chain}`,
-      500,
-      { chain, required, available },
-    );
+    super('INSUFFICIENT_BALANCE', `Insufficient balance on ${chain}`, 500, {
+      chain,
+      required,
+      available,
+    });
   }
 }
 
@@ -101,6 +98,17 @@ export class SanctionedAddressError extends GatewayError {
 export class ComplianceCheckFailedError extends GatewayError {
   constructor(reason: string) {
     super('COMPLIANCE_CHECK_FAILED', `Compliance check failed: ${reason}`, 403);
+  }
+}
+
+export class ScreeningUnavailableError extends GatewayError {
+  constructor(provider: string, reason: string) {
+    super(
+      'SCREENING_UNAVAILABLE',
+      `Screening provider ${provider} is unavailable: ${reason}. Payment cannot proceed (fail-closed).`,
+      503,
+      { provider, reason },
+    );
   }
 }
 
