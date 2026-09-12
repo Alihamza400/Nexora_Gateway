@@ -1,5 +1,8 @@
 import { randomUUID } from 'crypto';
 
+export { HttpClient, HttpError, HttpTimeoutError } from './http-client.js';
+export type { HttpClientConfig, RequestOptions, HttpResponse } from './http-client.js';
+
 /**
  * Generate a UUID v4.
  */
@@ -70,7 +73,11 @@ export function normalizeTimeScore(time: number, maxTime: number): number {
 /**
  * Validate an amount is within acceptable bounds.
  */
-export function isValidAmount(amount: number, min: number = 0, max: number = Number.MAX_SAFE_INTEGER): boolean {
+export function isValidAmount(
+  amount: number,
+  min: number = 0,
+  max: number = Number.MAX_SAFE_INTEGER,
+): boolean {
   return typeof amount === 'number' && !isNaN(amount) && amount >= min && amount <= max;
 }
 
