@@ -1,0 +1,146 @@
+# Crypto Gateway - Staging Configuration
+#
+# Staging runs the same code path as production against testnet chains. Only
+# configuration differs; no `if (testnet)` branches exist in business logic
+# (docs/REMAINING-IMPLEMENTATION-STRATEGY.md guiding principle 6).
+#
+# Reference: docs/REMAINING-IMPLEMENTATION-STRATEGY.md §13 for the full variable
+# inventory. Secrets are never stored here — only their names are documented.
+
+server:
+  host: 0.0.0.0
+  port: 3000
+  cors_origins:
+    - "https://app.staging.example.com"
+
+database:
+  host: postgres-service
+  port: 5432
+  name: crypto_gateway
+  user: postgres
+  pool_min: 2
+  pool_max: 10
+
+redis:
+  host: redis-service
+  port: 6379
+
+# ─── Chains (testnet) ─────────────────────────────────────────────────────────
+# RPC URLs come from secrets, never from this file.
+chains:
+  ethereum:
+    chain_id: "11155111"        # Sepolia
+    confirmation_depth: 12
+    block_time: 12
+    finality: probabilistic
+  base:
+    chain_id: "84532"           # Base Sepolia
+    confirmation_depth: 1
+    block_time: 2
+    finality: probabilistic
+  arbitrum:
+    chain_id: "421614"          # Arbitrum Sepolia
+    confirmation_depth: 1
+    block_time: 1
+    finality: probabilistic
+  polygon:
+    chain_id: "80002"           # Polygon Amoy (Mumbai is decommissioned)
+    confirmation_depth: 64
+    block_time: 2
+    finality: probabilistic
+  tron:
+    chain_id: "tron-nile"
+    confirmation_depth: 19
+    block_time: 3
+    finality: probabilistic
+  solana:
+    chain_id: "solana-devnet"
+    confirmation_depth: 1
+    block_time: 1
+    finality: finalized
+
+# ─── Rate lock ────────────────────────────────────────────────────────────────
+rate_lock:
+  default_ttl_seconds: 300
+  max_ttl_seconds: 600
+
+# ─── Oracles ──────────────────────────────────────────────────────────────────
+oracles:
+  # Ordered failover chain. A stale or diverging source fails over rather than
+  # silently pricing the payment.
+  order:
+    - coingecko
+    - chainlink
+  max_age_seconds: 120
+  max_deviation_bps: 200
+
+# ─── Compliance ───────────────────────────────────────────────────────────────
+# SCREENING_FAIL_MODE=closed is mandatory: an unreachable screening provider must
+# never approve an address. See §9.1 of the strategy.
+compliance:
+  kyc_threshold_usd: 10000
+  sanctions_check_enabled: true
+  screening_mode: real
+  screening_fail_mode: closed
+  auto_block_threshold: 90
+  review_threshold: 70
+  velocity_max_transactions: 20
+  velocity_max_amount: 100000
+
+# ─── Routing ──────────────────────────────────────────────────────────────────
+routing:
+  providers:
+    - lifi
+    - bungee
+  quote_timeout_ms: 5000
+  quote_cache_ttl_seconds: 15
+  min_quotes_required: 1
+  # Testnet bridges have thin liquidity; execution is validated single-chain
+  # first. See §6 WS3.1.
+  cross_chain_execution_enabled: false
+
+# ─── Signing ──────────────────────────────────────────────────────────────────
+# Local keystore is permitted in staging only; production requires AWS KMS and
+# the signer refuses to construct a local key when NODE_ENV=production.
+signing:
+  provider: local-keystore
+  max_daily_spend_usd_per_chain: 1000
+  require_low_s: true
+
+# ─── Gas abstraction ──────────────────────────────────────────────────────────
+gas:
+  paymaster_provider: pimlico
+  sponsorship_daily_cap_usd: 50
+  max_gas_price_gwei: 100
+
+# ─── Recovery ─────────────────────────────────────────────────────────────────
+recovery:
+  stuck_transaction_timeout_ms: 1800000
+  underpayment_tolerance_percent: 1
+  max_auto_refund_usd: 1000
+
+# ─── Webhooks ─────────────────────────────────────────────────────────────────
+webhooks:
+  max_retries: 5
+  timeout_ms: 30000
+  retry_delays_ms:
+    - 1000
+    - 5000
+    - 30000
+    - 300000
+
+# ─── Worker ───────────────────────────────────────────────────────────────────
+worker:
+  poll_interval_ms: 5000
+  concurrency: 4
+  job_max_attempts: 5
+  job_backoff_base_ms: 1000
+
+# ─── Logging & telemetry ──────────────────────────────────────────────────────
+logging:
+  level: debug
+  format: pretty
+
+telemetry:
+  metrics_enabled: true
+  traces_enabled: true

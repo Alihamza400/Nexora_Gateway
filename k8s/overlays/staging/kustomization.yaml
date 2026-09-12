@@ -1,0 +1,51 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Staging: single API replica, testnet chains, verbose logs. Values differ from
+# production only in config — the code path under test is identical
+# (docs/REMAINING-IMPLEMENTATION-STRATEGY.md guiding principle 6).
+resources:
+  - ../../base
+
+namespace: crypto-gateway
+
+replicas:
+  - name: api-gateway
+    count: 1
+
+images:
+  - name: crypto-gateway/api-gateway
+    newTag: staging
+  - name: crypto-gateway/worker
+    newTag: staging
+
+# Without disableNameSuffixHash the ConfigMap would be renamed with a content
+# hash, breaking the configMapKeyRef lookups in the workload manifests.
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: crypto-gateway-config
+    behavior: merge
+    literals:
+      - NODE_ENV=staging
+      - LOG_LEVEL=debug
+
+patches:
+  - target:
+      kind: Ingress
+      name: api-gateway
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: api.staging.example.com
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: api.staging.example.com
+  - target:
+      kind: ServiceAccount
+      name: worker
+    patch: |-
+      - op: replace
+        path: /metadata/annotations/eks.amazonaws.com~1role-arn
+        value: arn:aws:iam::000000000000:role/cgw-staging-worker

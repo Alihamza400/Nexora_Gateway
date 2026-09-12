@@ -1,0 +1,54 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Production: 3 API replicas, mainnet chains, info logs.
+#
+# Image tags in this file are placeholders. The release pipeline pins the exact
+# commit with `kubectl set image` immediately after apply, so what runs is always
+# traceable to a git SHA rather than to a floating `latest` tag.
+resources:
+  - ../../base
+
+namespace: crypto-gateway
+
+replicas:
+  - name: api-gateway
+    count: 3
+
+images:
+  - name: crypto-gateway/api-gateway
+    newTag: production
+  - name: crypto-gateway/worker
+    newTag: production
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: crypto-gateway-config
+    behavior: merge
+    literals:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      # Settlement is paused by default on a fresh deploy and enabled explicitly
+      # after verification. See §6 WS2.5 (emergency pause).
+      - EMERGENCY_PAUSE=true
+
+patches:
+  - target:
+      kind: Ingress
+      name: api-gateway
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: api.example.com
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: api.example.com
+  - target:
+      kind: ServiceAccount
+      name: worker
+    patch: |-
+      - op: replace
+        path: /metadata/annotations/eks.amazonaws.com~1role-arn
+        value: arn:aws:iam::000000000000:role/cgw-production-worker

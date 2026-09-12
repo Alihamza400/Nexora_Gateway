@@ -1,0 +1,33 @@
+# PodDisruptionBudgets keep voluntary disruptions (node drains, cluster upgrades)
+# from taking a workload fully offline.
+#
+# The worker is a singleton by design, so its budget is minAvailable: 0 with
+# a comment rather than a misleading guarantee — the honest statement is that a
+# node drain will interrupt it, and the durable job queue is what makes that safe.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway
+  namespace: crypto-gateway
+  labels:
+    app: api-gateway
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker
+  namespace: crypto-gateway
+  labels:
+    app: worker
+spec:
+  # Single replica: a drain will interrupt it. Safe because in-flight work is
+  # persisted in the job queue and resumes on restart (ADR-002).
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: worker

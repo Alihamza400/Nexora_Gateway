@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Base contains only workloads that actually run as processes:
+#   api-gateway  — public REST API
+#   worker       — deposit watcher, confirmation tracker, durable job runner
+#
+# Library packages (routing-engine, settlement, compliance, recovery,
+# reconciliation, rate-lock, gas-abstraction, chain-abstraction, payment-intent)
+# are composed inside `worker` in-process. They deliberately have no Deployment,
+# Service or image here: see docs/adr/ADR-001.
+#
+# Not included on purpose:
+#   - db-migrate      -> k8s/jobs/db-migrate.yml (applied and waited on explicitly)
+#   - Namespace       -> included, but overlays may target an existing namespace
+
+namespace: crypto-gateway
+
+resources:
+  - namespace.yml
+  - configmap.yml
+  - service-accounts.yml
+  - external-secrets.yml
+  - postgres.yml
+  - redis.yml
+  - api-gateway.yml
+  - worker.yml
+  - pdb.yml
+  - ingress.yml
+  - network-policies.yml
+  - cronjob-db-backup.yml
+  - monitoring.yml
+  - prometheus.yml
+  - grafana.yml

@@ -1,0 +1,26 @@
+# Policy baseline — accepted violations that predate enforcement.
+#
+# Format: <check-id>|<file>|<count>
+# This file may only shrink. Fix an item, then delete its line.
+# New violations fail CI: see scripts/check-policy.sh and docs/adr/.
+#
+# Owner mapping:
+#   no-setTimeout-in-retry-paths  -> WS1.6 durable job queue (docs/REMAINING-IMPLEMENTATION-STRATEGY.md §6 WS1)
+#   no-zero-usd-valuation        -> WS3.3 oracle-backed valuation (§6 WS3.3)
+
+# Settlement still schedules retries with an in-process timer; replaced by the
+# durable Postgres-backed job queue in WS1.6.
+no-setTimeout-in-retry-paths|packages/settlement/src/settlement.service.ts|2
+
+# The worker's timers are not retries, and neither can lose work:
+#   job-queue.ts  - sleep() paces the dequeue poll loop between batches; the work
+#                   itself is persisted, so a missed tick costs latency only.
+#   index.ts      - a bounded deadline that forces exit if graceful shutdown hangs.
+# Both are deliberate and reviewed, not exemptions of convenience.
+no-setTimeout-in-retry-paths|packages/worker/src/job-queue.ts|1
+no-setTimeout-in-retry-paths|packages/worker/src/index.ts|1
+
+# USD valuation hardcoded to zero; wired to the price oracle in WS3.3. Until then
+# the ledger and risk limits cannot see on-chain value.
+no-zero-usd-valuation|packages/chain-abstraction/src/evm/evm-chain-client.ts|3
+no-zero-usd-valuation|packages/chain-abstraction/src/tron/tron-chain-client.ts|1

@@ -320,9 +320,9 @@ kubectl logs -f deployment/api-gateway -n crypto-gateway
 ### Docker
 
 ```bash
-# Build images
-docker build -f docker/Dockerfile.api-gateway -t crypto-gateway/api-gateway .
-docker build -f docker/Dockerfile.payment-intent -t crypto-gateway/payment-intent .
+# Build images (one parameterized Dockerfile serves every runnable process)
+docker build -f docker/Dockerfile.service --build-arg SERVICE=api-gateway -t crypto-gateway/api-gateway .
+docker build -f docker/Dockerfile.service --build-arg SERVICE=worker -t crypto-gateway/worker .
 
 # Run containers
 docker run -p 3000:3000 crypto-gateway/api-gateway

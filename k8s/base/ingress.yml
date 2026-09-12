@@ -1,0 +1,50 @@
+# Public entrypoint for the gateway API.
+#
+# Only the API is exposed. The worker has no ingress; Prometheus and Grafana are
+# never publicly reachable (see monitoring notes in k8s/README.md).
+#
+# TLS is issued by cert-manager; the ClusterIssuer is a cluster prerequisite:
+#   kubectl apply -f - <<'EOF'
+#   apiVersion: cert-manager.io/v1
+#   kind: ClusterIssuer
+#   metadata: { name: letsencrypt-prod }
+#   spec:
+#     acme:
+#       server: https://acme-v02.api.letsencrypt.org/directory
+#       email: ops@example.com
+#       privateKeySecretRef: { name: letsencrypt-prod }
+#       solvers:
+#         - http01: { ingress: { class: nginx } }
+#   EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-gateway
+  namespace: crypto-gateway
+  labels:
+    app: api-gateway
+    app.kubernetes.io/part-of: crypto-gateway
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    # Request-level rate limiting in front of application-level limits.
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.example.com
+      secretName: api-gateway-tls
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway-service
+                port:
+                  number: 80

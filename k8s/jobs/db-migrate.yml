@@ -1,0 +1,75 @@
+# Pre-deploy database migration.
+#
+# Applied explicitly before a rollout, never as part of the base kustomization:
+# a Job object is effectively immutable once complete, so re-applying it on every
+# deploy would fail. The release procedure is:
+#
+#   kubectl delete job db-migrate -n crypto-gateway --ignore-not-found
+#   kubectl apply -f k8s/jobs/db-migrate.yml
+#   kubectl wait --for=condition=complete job/db-migrate -n crypto-gateway --timeout=600s
+#   kubectl apply -k k8s/overlays/<env>
+#
+# Migrations must be forward-only and expand/contract so the previous release keeps
+# working against the new schema during a rolling update
+# (docs/REMAINING-IMPLEMENTATION-STRATEGY.md §6 WS4.4).
+#
+# The migrator takes a Postgres advisory lock, so two concurrent deploys cannot
+# migrate at the same time.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  namespace: crypto-gateway
+  labels:
+    app: db-migrate
+    app.kubernetes.io/part-of: crypto-gateway
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: db-migrate
+        app.kubernetes.io/part-of: crypto-gateway
+    spec:
+      restartPolicy: Never
+      serviceAccountName: db-migrate
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: db-migrate
+          image: crypto-gateway/worker:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: crypto-gateway-config
+                  key: NODE_ENV
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: crypto-gateway-secrets
+                  key: DATABASE_URL
+          command: ["node", "packages/db/dist/migrate.js"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: tmp
+          emptyDir: {}

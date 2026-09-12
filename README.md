@@ -412,8 +412,9 @@ kubectl get pods -n crypto-gateway
 ### Docker Deployment
 
 ```bash
-# Build images
-docker build -t crypto-gateway/api-gateway:latest -f docker/Dockerfile.api-gateway .
+# Build images (one parameterized Dockerfile serves every runnable process)
+docker build -f docker/Dockerfile.service --build-arg SERVICE=api-gateway -t crypto-gateway/api-gateway .
+docker build -f docker/Dockerfile.service --build-arg SERVICE=worker -t crypto-gateway/worker .
 
 # Run with docker-compose
 docker-compose -f docker-compose.prod.yml up -d

@@ -1,0 +1,79 @@
+# syntax=docker/dockerfile:1.7
+#
+# Single parameterized service image for the crypto-gateway monorepo.
+#
+#   docker build -f docker/Dockerfile.service --build-arg SERVICE=api-gateway -t crypto-gateway/api-gateway .
+#   docker build -f docker/Dockerfile.service --build-arg SERVICE=worker      -t crypto-gateway/worker .
+#
+# Only real, runnable processes get an image. Library packages (routing-engine,
+# settlement, compliance, recovery, reconciliation, rate-lock, gas-abstraction)
+# are composed inside the `worker` process per docs/adr/ADR-001. Shipping a
+# Dockerfile for a library would advertise a process that does not exist.
+#
+# Security posture:
+#   - non-root (UID 10001), no login shell
+#   - production dependencies only in the final layer
+#   - dumb-init as PID 1 so SIGTERM reaches the Node process for graceful drain
+#   - source and test files stripped from the runtime layer
+
+ARG NODE_VERSION=20-alpine
+
+# ─── Stage 1: build ──────────────────────────────────────────────────────────
+FROM node:${NODE_VERSION} AS builder
+
+WORKDIR /app
+
+ENV NPM_CONFIG_LOGLEVEL=warn \
+    NPM_CONFIG_FUND=false \
+    NPM_CONFIG_AUDIT=false
+
+# Manifests first so the dependency layer caches independently of source changes.
+COPY package.json package-lock.json turbo.json tsconfig.base.json ./
+COPY packages ./packages
+
+RUN npm ci --ignore-scripts
+
+# Build the target package and everything it depends on.
+ARG SERVICE
+RUN npx turbo run build --filter=@crypto-gateway/${SERVICE}...
+
+# ─── Stage 2: runtime ────────────────────────────────────────────────────────
+FROM node:${NODE_VERSION} AS runtime
+
+WORKDIR /app
+
+RUN apk add --no-cache dumb-init \
+    && addgroup -g 10001 -S cgw \
+    && adduser -u 10001 -S -G cgw -H -s /sbin/nologin cgw
+
+ENV NODE_ENV=production \
+    NPM_CONFIG_LOGLEVEL=warn \
+    NPM_CONFIG_FUND=false \
+    NPM_CONFIG_AUDIT=false
+
+# Reinstall with production dependencies only. Workspace package.json files come
+# along with the copied packages tree, which is what npm needs to create the
+# @crypto-gateway/* workspace links.
+COPY package.json package-lock.json ./
+COPY --from=builder /app/packages ./packages
+
+RUN npm ci --omit=dev --ignore-scripts \
+    && find packages -maxdepth 2 -type d -name src -prune -exec rm -rf {} + \
+    && find packages -type f -name '*.test.ts' -delete \
+    && npm cache clean --force \
+    && chown -R 10001:10001 /app
+
+USER 10001:10001
+
+ARG SERVICE
+ENV SERVICE_NAME=${SERVICE} \
+    PORT=3000 \
+    HOST=0.0.0.0
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+    CMD node -e "require('http').get({host:'127.0.0.1',port:process.env.PORT||3000,path:'/health'},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD node packages/${SERVICE_NAME}/dist/index.js

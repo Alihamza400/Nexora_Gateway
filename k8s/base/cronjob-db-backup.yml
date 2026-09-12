@@ -1,0 +1,79 @@
+# Nightly logical backup of the gateway database.
+#
+# WAL archiving / PITR is the primary recovery mechanism and is configured on the
+# managed database itself. This CronJob is the portable secondary: an off-cluster,
+# independently restorable dump. A backup that has never been restored is not a
+# backup — restore drills are required before Gate G3
+# (docs/REMAINING-IMPLEMENTATION-STRATEGY.md §6 WS4.4).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-backup
+  namespace: crypto-gateway
+  labels:
+    app: db-backup
+    app.kubernetes.io/part-of: crypto-gateway
+spec:
+  schedule: "17 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: db-backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: db-migrate
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: postgres:14-alpine
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: crypto-gateway-secrets
+                      key: DATABASE_URL
+                - name: BACKUP_BUCKET
+                  value: s3://crypto-gateway-backups
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+                  FILE="/tmp/crypto-gateway-${STAMP}.dump"
+                  pg_dump --format=custom --no-owner --dbname="$DATABASE_URL" --file="$FILE"
+                  # Upload with the AWS CLI available in the ops sidecar image, or
+                  # swap this for `aws s3 cp` in a purpose-built backup image.
+                  echo "backup written: $FILE"
+                  echo "TODO(WS4.4): upload to ${BACKUP_BUCKET}/$(date -u +%Y/%m)/ and verify checksum"
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+          volumes:
+            - name: tmp
+              emptyDir: {}
