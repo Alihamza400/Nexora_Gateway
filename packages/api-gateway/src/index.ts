@@ -10,6 +10,7 @@ import {
 } from '@crypto-gateway/payment-intent';
 import { intentRoutes } from './routes/intents.js';
 import { authRoutes } from './routes/auth.js';
+import { publicIntentRoutes } from './routes/public-intents.js';
 import { createAuthMiddleware } from './middleware/auth.js';
 
 const app = Fastify({
@@ -80,6 +81,10 @@ await app.register(async (instance) => {
 
 await app.register(async (instance) => {
   await authRoutes(instance, authService);
+});
+
+await app.register(async (instance) => {
+  await publicIntentRoutes(instance, intentService, merchantService);
 });
 
 // ─── Error Handler ───────────────────────────────────────────────────────────
