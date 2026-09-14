@@ -117,7 +117,10 @@ export class PaymentIntentRepository {
    * Find an intent by ID.
    */
   async findById(id: string): Promise<PaymentIntent | null> {
-    const result = await query<PaymentIntent>(`SELECT * FROM payment_intents WHERE id = $1`, [id]);
+    const result = await query<Record<string, unknown>>(
+      `SELECT * FROM payment_intents WHERE id = $1`,
+      [id],
+    );
     return result.rows[0] ? this.mapRow(result.rows[0]) : null;
   }
 
@@ -129,7 +132,7 @@ export class PaymentIntentRepository {
     limit: number = 50,
     offset: number = 0,
   ): Promise<PaymentIntent[]> {
-    const result = await query<PaymentIntent>(
+    const result = await query<Record<string, unknown>>(
       `SELECT * FROM payment_intents WHERE merchant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
       [merchantId, limit, offset],
     );
@@ -140,7 +143,7 @@ export class PaymentIntentRepository {
    * Find an intent by merchant ID and order reference.
    */
   async findByOrderRef(orderRef: string): Promise<PaymentIntent | null> {
-    const result = await query<PaymentIntent>(
+    const result = await query<Record<string, unknown>>(
       `SELECT * FROM payment_intents WHERE order_ref = $1`,
       [orderRef],
     );
@@ -155,7 +158,7 @@ export class PaymentIntentRepository {
    * remaining row.
    */
   async findByState(state: IntentState, limit: number = 100): Promise<PaymentIntent[]> {
-    const result = await query<PaymentIntent>(
+    const result = await query<Record<string, unknown>>(
       `SELECT * FROM payment_intents
        WHERE state = $1
        ORDER BY updated_at ASC
@@ -169,7 +172,7 @@ export class PaymentIntentRepository {
    * Find all intents with expired quotes.
    */
   async findExpiredIntents(): Promise<PaymentIntent[]> {
-    const result = await query<PaymentIntent>(
+    const result = await query<Record<string, unknown>>(
       `SELECT * FROM payment_intents
        WHERE state IN ('QUOTED', 'AWAITING_PAYMENT')
        AND quote_expires_at IS NOT NULL
@@ -182,7 +185,7 @@ export class PaymentIntentRepository {
    * Get all events for an intent (audit trail).
    */
   async getEvents(intentId: string): Promise<IntentEvent[]> {
-    const result = await query<IntentEvent>(
+    const result = await query<Record<string, unknown>>(
       `SELECT * FROM intent_events WHERE intent_id = $1 ORDER BY created_at ASC`,
       [intentId],
     );
@@ -218,7 +221,7 @@ export class PaymentIntentRepository {
     quoteExpiresAt: Date,
     deposit?: { address: string; asset: string; chain: string },
   ): Promise<PaymentIntent> {
-    const result = await query<PaymentIntent>(
+    const result = await query<Record<string, unknown>>(
       `UPDATE payment_intents
        SET quoted_rate = $1,
            quote_expires_at = $2,
@@ -242,7 +245,7 @@ export class PaymentIntentRepository {
       throw new Error(`Intent not found: ${id}`);
     }
 
-    return this.mapRow(result.rows[0]);
+    return this.mapRow(result.rows[0]!);
   }
 
   /**
@@ -253,7 +256,7 @@ export class PaymentIntentRepository {
    * expectation is the one a transfer most likely belongs to.
    */
   async findAwaitingDepositAt(chain: string, address: string): Promise<PaymentIntent | null> {
-    const result = await query<PaymentIntent>(
+    const result = await query<Record<string, unknown>>(
       `SELECT * FROM payment_intents
        WHERE deposit_chain = $1
          AND deposit_address = $2
@@ -273,7 +276,7 @@ export class PaymentIntentRepository {
    */
   async findAwaitingDeposits(chain?: string): Promise<PaymentIntent[]> {
     const result = chain
-      ? await query<PaymentIntent>(
+      ? await query<Record<string, unknown>>(
           `SELECT * FROM payment_intents
            WHERE deposit_address IS NOT NULL
              AND deposit_chain = $1
@@ -281,7 +284,7 @@ export class PaymentIntentRepository {
            ORDER BY created_at ASC`,
           [chain],
         )
-      : await query<PaymentIntent>(
+      : await query<Record<string, unknown>>(
           `SELECT * FROM payment_intents
            WHERE deposit_address IS NOT NULL
              AND state IN ('QUOTED', 'AWAITING_PAYMENT', 'UNDERPAID')
