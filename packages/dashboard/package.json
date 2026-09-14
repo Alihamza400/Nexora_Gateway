@@ -22,7 +22,8 @@
     "@radix-ui/react-tabs": "^1.0.4",
     "@radix-ui/react-select": "^2.0.0",
     "@radix-ui/react-dropdown-menu": "^2.0.6",
-    "date-fns": "^3.6.0"
+    "date-fns": "^3.6.0",
+    "@crypto-gateway/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
